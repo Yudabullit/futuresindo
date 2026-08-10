@@ -67,28 +67,26 @@ interface OrderItem {
   total_price: number;
 }
 
-const BarangMasuk = () => {
-  const [transactions, setTransactions] = useState<
-    BarangMasukItem[]
-  >([]);
+interface GroupedTransaction extends BarangMasukItem {
+  products: OrderItem[];
+  total_qty: number;
+  total_price: number;
+}
 
+const BarangMasuk = () => {
+  const [transactions, setTransactions] = useState<BarangMasukItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(
-    null
-  );
+  const [error, setError] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [dialogOpen, setDialogOpen] =
-    useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const [dialogMode, setDialogMode] =
     useState<"add" | "edit">("add");
 
   const [page, setPage] = useState(1);
 
-  const [products, setProducts] = useState<any[]>(
-    []
-  );
+  const [products, setProducts] = useState<any[]>([]);
 
   const [editingId, setEditingId] =
     useState<string | null>(null);
@@ -103,9 +101,7 @@ const BarangMasuk = () => {
     notes: "",
   });
 
-  const [orderItems, setOrderItems] = useState<
-    OrderItem[]
-  >([
+  const [orderItems, setOrderItems] = useState<OrderItem[]>([
     {
       product_id: "",
       product_name: "",
@@ -116,11 +112,9 @@ const BarangMasuk = () => {
     },
   ]);
 
-  /*
-   * ============================
-   * FETCH TRANSACTIONS
-   * ============================
-   */
+  // ============================================
+  // FETCH TRANSACTIONS
+  // ============================================
 
   const fetchTransactions = async () => {
     try {
@@ -141,10 +135,15 @@ const BarangMasuk = () => {
 
       const { data, error } = await query;
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       setTransactions(data || []);
       setError(null);
+
+      // Kembali ke halaman pertama ketika pencarian berubah
+      setPage(1);
     } catch (err: any) {
       setError(err.message);
       setTransactions([]);
@@ -157,21 +156,20 @@ const BarangMasuk = () => {
     fetchTransactions();
   }, [searchTerm]);
 
-  /*
-   * ============================
-   * FETCH PRODUCTS
-   * ============================
-   */
+  // ============================================
+  // FETCH PRODUCTS
+  // ============================================
 
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const { data, error } =
-          await supabase
-            .from("products")
-            .select("*");
+        const { data, error } = await supabase
+          .from("products")
+          .select("*");
 
-        if (error) throw error;
+        if (error) {
+          throw error;
+        }
 
         setProducts(data || []);
       } catch (err: any) {
@@ -182,11 +180,9 @@ const BarangMasuk = () => {
     fetchProducts();
   }, []);
 
-  /*
-   * ============================
-   * PRODUCT CHANGE
-   * ============================
-   */
+  // ============================================
+  // PRODUCT CHANGE
+  // ============================================
 
   const handleProductChange = (
     index: number,
@@ -211,7 +207,7 @@ const BarangMasuk = () => {
       return;
     }
 
-    const price = product.price || 0;
+    const price = Number(product.price || 0);
 
     setOrderItems((prev) =>
       prev.map((item, i) =>
@@ -225,18 +221,16 @@ const BarangMasuk = () => {
                 product.code || "",
               price,
               total_price:
-                item.qty * price,
+                Number(item.qty || 0) * price,
             }
           : item
       )
     );
   };
 
-  /*
-   * ============================
-   * QTY CHANGE
-   * ============================
-   */
+  // ============================================
+  // QTY CHANGE
+  // ============================================
 
   const handleQtyChange = (
     index: number,
@@ -249,18 +243,16 @@ const BarangMasuk = () => {
               ...item,
               qty,
               total_price:
-                qty * item.price,
+                qty * Number(item.price || 0),
             }
           : item
       )
     );
   };
 
-  /*
-   * ============================
-   * PRICE CHANGE
-   * ============================
-   */
+  // ============================================
+  // PRICE CHANGE
+  // ============================================
 
   const handlePriceChange = (
     index: number,
@@ -273,18 +265,16 @@ const BarangMasuk = () => {
               ...item,
               price,
               total_price:
-                item.qty * price,
+                Number(item.qty || 0) * price,
             }
           : item
       )
     );
   };
 
-  /*
-   * ============================
-   * ADD PRODUCT ROW
-   * ============================
-   */
+  // ============================================
+  // ADD PRODUCT ROW
+  // ============================================
 
   const handleAddProductRow = () => {
     setOrderItems((prev) => [
@@ -300,11 +290,9 @@ const BarangMasuk = () => {
     ]);
   };
 
-  /*
-   * ============================
-   * REMOVE PRODUCT ROW
-   * ============================
-   */
+  // ============================================
+  // REMOVE PRODUCT ROW
+  // ============================================
 
   const handleRemoveProductRow = (
     index: number
@@ -318,11 +306,9 @@ const BarangMasuk = () => {
     );
   };
 
-  /*
-   * ============================
-   * TOTAL ORDER
-   * ============================
-   */
+  // ============================================
+  // TOTAL ORDER
+  // ============================================
 
   const orderTotal = orderItems.reduce(
     (total, item) =>
@@ -331,11 +317,9 @@ const BarangMasuk = () => {
     0
   );
 
-  /*
-   * ============================
-   * ADD TRANSACTION
-   * ============================
-   */
+  // ============================================
+  // ADD TRANSACTION
+  // ============================================
 
   const handleAddTransaction = () => {
     setDialogMode("add");
@@ -365,11 +349,9 @@ const BarangMasuk = () => {
     setDialogOpen(true);
   };
 
-  /*
-   * ============================
-   * EDIT TRANSACTION
-   * ============================
-   */
+  // ============================================
+  // EDIT TRANSACTION
+  // ============================================
 
   const handleEditTransaction = (
     transaction: BarangMasukItem
@@ -398,10 +380,12 @@ const BarangMasuk = () => {
           transaction.product_name || "",
         product_code:
           transaction.product_code || "",
-        qty: transaction.qty || 0,
-        price: transaction.price || 0,
+        qty:
+          Number(transaction.qty || 0),
+        price:
+          Number(transaction.price || 0),
         total_price:
-          transaction.total_price || 0,
+          Number(transaction.total_price || 0),
       },
     ]);
 
@@ -409,11 +393,9 @@ const BarangMasuk = () => {
     setDialogOpen(true);
   };
 
-  /*
-   * ============================
-   * DELETE TRANSACTION
-   * ============================
-   */
+  // ============================================
+  // DELETE TRANSACTION
+  // ============================================
 
   const handleDeleteTransaction = async (
     id: string
@@ -432,7 +414,9 @@ const BarangMasuk = () => {
         .delete()
         .eq("id", id);
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       await fetchTransactions();
 
@@ -452,11 +436,9 @@ const BarangMasuk = () => {
     }
   };
 
-  /*
-   * ============================
-   * SUBMIT
-   * ============================
-   */
+  // ============================================
+  // SUBMIT
+  // ============================================
 
   const handleSubmit = async (
     e: React.FormEvent
@@ -464,10 +446,7 @@ const BarangMasuk = () => {
     e.preventDefault();
 
     try {
-      /*
-       * Pastikan ada product
-       */
-
+      // Validasi product
       if (orderItems.length === 0) {
         toast({
           title: "Error",
@@ -479,10 +458,7 @@ const BarangMasuk = () => {
         return;
       }
 
-      /*
-       * Pastikan semua product sudah dipilih
-       */
-
+      // Validasi product terpilih
       const invalidProduct =
         orderItems.some(
           (item) =>
@@ -501,10 +477,7 @@ const BarangMasuk = () => {
         return;
       }
 
-      /*
-       * Pastikan Qty > 0
-       */
-
+      // Validasi quantity
       const invalidQty =
         orderItems.some(
           (item) =>
@@ -523,11 +496,9 @@ const BarangMasuk = () => {
         return;
       }
 
-      /*
-       * ============================
-       * EDIT
-       * ============================
-       */
+      // ==========================================
+      // EDIT
+      // ==========================================
 
       if (
         dialogMode === "edit" &&
@@ -554,9 +525,11 @@ const BarangMasuk = () => {
           product_code:
             item.product_code,
 
-          qty: item.qty,
+          qty:
+            item.qty,
 
-          price: item.price,
+          price:
+            item.price,
 
           total_price:
             item.total_price,
@@ -574,7 +547,9 @@ const BarangMasuk = () => {
             .update(payload)
             .eq("id", editingId);
 
-        if (error) throw error;
+        if (error) {
+          throw error;
+        }
 
         toast({
           title: "Success",
@@ -583,11 +558,9 @@ const BarangMasuk = () => {
         });
       }
 
-      /*
-       * ============================
-       * ADD MULTIPLE PRODUCTS
-       * ============================
-       */
+      // ==========================================
+      // ADD MULTIPLE PRODUCTS
+      // ==========================================
 
       else {
         const payloads =
@@ -610,9 +583,11 @@ const BarangMasuk = () => {
             product_code:
               item.product_code,
 
-            qty: item.qty,
+            qty:
+              item.qty,
 
-            price: item.price,
+            price:
+              item.price,
 
             total_price:
               item.total_price,
@@ -629,7 +604,9 @@ const BarangMasuk = () => {
             .from("barang_masuk")
             .insert(payloads);
 
-        if (error) throw error;
+        if (error) {
+          throw error;
+        }
 
         toast({
           title: "Success",
@@ -656,22 +633,20 @@ const BarangMasuk = () => {
     }
   };
 
-  /*
-   * ============================
-   * GROUPING ORDER
-   *
-   * Beberapa row dengan
-   * transaction_number yang sama
-   * ditampilkan sebagai 1 order.
-   *
-   * Database tidak diubah.
-   * ============================
-   */
+  // ============================================
+  // GROUP TRANSACTIONS
+  //
+  // transaction_number yang sama
+  // = 1 ORDER
+  // ============================================
 
   const groupedTransactions =
     transactions.reduce(
       (
-        groups: Record<string, any>,
+        groups: Record<
+          string,
+          GroupedTransaction
+        >,
         transaction
       ) => {
         const key =
@@ -687,25 +662,20 @@ const BarangMasuk = () => {
         }
 
         groups[key].products.push({
-          id: transaction.id,
-
+          product_id:
+            transaction.product_id || "",
           product_name:
-            transaction.product_name,
-
+            transaction.product_name || "",
           product_code:
-            transaction.product_code,
-
-          qty: Number(
-            transaction.qty || 0
-          ),
-
-          price: Number(
-            transaction.price || 0
-          ),
-
-          total_price: Number(
-            transaction.total_price || 0
-          ),
+            transaction.product_code || "",
+          qty:
+            Number(transaction.qty || 0),
+          price:
+            Number(transaction.price || 0),
+          total_price:
+            Number(
+              transaction.total_price || 0
+            ),
         });
 
         groups[key].total_qty +=
@@ -726,11 +696,9 @@ const BarangMasuk = () => {
       groupedTransactions
     );
 
-  /*
-   * ============================
-   * PAGINATION
-   * ============================
-   */
+  // ============================================
+  // PAGINATION
+  // ============================================
 
   const rowsPerPage = 10;
 
@@ -746,24 +714,30 @@ const BarangMasuk = () => {
       page * rowsPerPage
     );
 
-  /*
-   * ============================
-   * UI
-   * ============================
-   */
+  // ============================================
+  // UI
+  // ============================================
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* HEADER */}
+
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold">
             Barang Masuk
           </h1>
+
+          <p className="text-muted-foreground">
+            Manage incoming goods
+          </p>
         </div>
 
         <div className="flex flex-wrap gap-3 mt-4 lg:mt-0">
           <Button
-            onClick={handleAddTransaction}
+            onClick={
+              handleAddTransaction
+            }
             className="flex items-center"
           >
             <Plus className="mr-2 h-4 w-4" />
@@ -803,7 +777,8 @@ const BarangMasuk = () => {
                 key: "price",
               },
               {
-                header: "Total Price",
+                header:
+                  "Total Price",
                 key: "total_price",
               },
               {
@@ -826,6 +801,8 @@ const BarangMasuk = () => {
         </div>
       </div>
 
+      {/* SEARCH */}
+
       <div className="w-full max-w-sm">
         <Search
           value={searchTerm}
@@ -839,11 +816,15 @@ const BarangMasuk = () => {
         />
       </div>
 
+      {/* ERROR */}
+
       {error && (
         <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded">
           <p>{error}</p>
         </div>
       )}
+
+      {/* EMPTY */}
 
       {!loading &&
         groupedTransactionList.length ===
@@ -852,6 +833,8 @@ const BarangMasuk = () => {
             No transactions found
           </div>
         )}
+
+      {/* TABLE */}
 
       {!loading &&
         groupedTransactionList.length >
@@ -885,6 +868,10 @@ const BarangMasuk = () => {
                   </TableCell>
 
                   <TableCell className="text-right font-semibold">
+                    Price
+                  </TableCell>
+
+                  <TableCell className="text-right font-semibold">
                     Total Price
                   </TableCell>
 
@@ -900,7 +887,7 @@ const BarangMasuk = () => {
 
               <TableBody>
                 {paginatedTransactions.map(
-                  (transaction: any) => (
+                  (transaction) => (
                     <TableRow
                       key={
                         transaction.transaction_number
@@ -917,15 +904,19 @@ const BarangMasuk = () => {
                       {/* SUPPLIER */}
 
                       <TableCell className="align-top">
-                        {transaction.supplier_name ||
-                          "-"}
+                        {
+                          transaction.supplier_name ||
+                          "-"
+                        }
                       </TableCell>
 
                       {/* INVOICE */}
 
                       <TableCell className="align-top">
-                        {transaction.invoice_number ||
-                          "-"}
+                        {
+                          transaction.invoice_number ||
+                          "-"
+                        }
                       </TableCell>
 
                       {/* PRODUCTS */}
@@ -934,8 +925,8 @@ const BarangMasuk = () => {
                         <div className="space-y-1">
                           {transaction.products.map(
                             (
-                              product: any,
-                              index: number
+                              product,
+                              index
                             ) => (
                               <div
                                 key={index}
@@ -955,8 +946,8 @@ const BarangMasuk = () => {
                         <div className="space-y-1">
                           {transaction.products.map(
                             (
-                              product: any,
-                              index: number
+                              product,
+                              index
                             ) => (
                               <div
                                 key={index}
@@ -976,23 +967,51 @@ const BarangMasuk = () => {
                         <div className="space-y-1">
                           {transaction.products.map(
                             (
-                              product: any,
-                              index: number
+                              product,
+                              index
                             ) => (
                               <div
                                 key={index}
                                 className="min-h-[24px]"
                               >
-                                {product.qty.toLocaleString()}
+                                {product.qty.toLocaleString(
+                                  "id-ID"
+                                )}
                               </div>
                             )
                           )}
 
                           {transaction.products
-                            .length > 1 && (
+                            .length >
+                            1 && (
                             <div className="border-t mt-2 pt-1 font-bold">
-                              {transaction.total_qty.toLocaleString()}
+                              {transaction.total_qty.toLocaleString(
+                                "id-ID"
+                              )}
                             </div>
+                          )}
+                        </div>
+                      </TableCell>
+
+                      {/* PRICE */}
+
+                      <TableCell className="text-right align-top">
+                        <div className="space-y-1">
+                          {transaction.products.map(
+                            (
+                              product,
+                              index
+                            ) => (
+                              <div
+                                key={index}
+                                className="min-h-[24px]"
+                              >
+                                Rp{" "}
+                                {product.price.toLocaleString(
+                                  "id-ID"
+                                )}
+                              </div>
+                            )
                           )}
                         </div>
                       </TableCell>
@@ -1003,8 +1022,8 @@ const BarangMasuk = () => {
                         <div className="space-y-1">
                           {transaction.products.map(
                             (
-                              product: any,
-                              index: number
+                              product,
+                              index
                             ) => (
                               <div
                                 key={index}
@@ -1019,7 +1038,8 @@ const BarangMasuk = () => {
                           )}
 
                           {transaction.products
-                            .length > 1 && (
+                            .length >
+                            1 && (
                             <div className="border-t mt-2 pt-1 font-bold">
                               Rp{" "}
                               {transaction.total_price.toLocaleString(
@@ -1059,13 +1079,26 @@ const BarangMasuk = () => {
                             size="sm"
                             onClick={() =>
                               handleEditTransaction(
-                                transaction.products[0]
+                                transaction
+                                  .products[0]
                                   ? {
                                       ...transaction,
-                                      ...transaction.products[0],
+                                      ...transaction
+                                        .products[0],
                                       id: transaction
                                         .products[0]
-                                        .id,
+                                        .product_id
+                                        ? transactions.find(
+                                            (t) =>
+                                              t.transaction_number ===
+                                                transaction.transaction_number &&
+                                              t.product_id ===
+                                                transaction
+                                                  .products[0]
+                                                  .product_id
+                                          )?.id ||
+                                          transaction.id
+                                        : transaction.id,
                                     }
                                   : transaction
                               )
@@ -1078,13 +1111,27 @@ const BarangMasuk = () => {
                           <Button
                             variant="destructive"
                             size="sm"
-                            onClick={() =>
-                              handleDeleteTransaction(
-                                transaction
-                                  .products[0]
-                                  ?.id
-                              )
-                            }
+                            onClick={() => {
+                              const firstProduct =
+                                transaction.products[0];
+
+                              const originalRow =
+                                transactions.find(
+                                  (t) =>
+                                    t.transaction_number ===
+                                      transaction.transaction_number &&
+                                    t.product_id ===
+                                      firstProduct?.product_id
+                                );
+
+                              if (
+                                originalRow
+                              ) {
+                                handleDeleteTransaction(
+                                  originalRow.id
+                                );
+                              }
+                            }}
                             className="px-3"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -1110,7 +1157,10 @@ const BarangMasuk = () => {
                 <PaginationPrevious
                   onClick={() =>
                     setPage((p) =>
-                      Math.max(p - 1, 1)
+                      Math.max(
+                        p - 1,
+                        1
+                      )
                     )
                   }
                 />
@@ -1155,7 +1205,9 @@ const BarangMasuk = () => {
 
       <Dialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={
+          setDialogOpen
+        }
       >
         <DialogContent className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -1173,7 +1225,9 @@ const BarangMasuk = () => {
           </DialogHeader>
 
           <form
-            onSubmit={handleSubmit}
+            onSubmit={
+              handleSubmit
+            }
             className="space-y-5"
           >
             {/* TRANSACTION + INVOICE */}
@@ -1257,7 +1311,8 @@ const BarangMasuk = () => {
                   </p>
                 </div>
 
-                {dialogMode === "add" && (
+                {dialogMode ===
+                  "add" && (
                   <Button
                     type="button"
                     variant="outline"
@@ -1336,13 +1391,14 @@ const BarangMasuk = () => {
                             (p) => (
                               <SelectItem
                                 key={p.id}
-                                value={p.id}
+                                value={
+                                  p.id
+                                }
                               >
                                 {p.code} -{" "}
                                 {
                                   p.description
                                 }
-
                                 {p.qty !==
                                   undefined &&
                                   ` (Stock: ${p.qty})`}
@@ -1492,14 +1548,17 @@ const BarangMasuk = () => {
                 type="button"
                 variant="outline"
                 onClick={() =>
-                  setDialogOpen(false)
+                  setDialogOpen(
+                    false
+                  )
                 }
               >
                 Cancel
               </Button>
 
               <Button type="submit">
-                {dialogMode === "add"
+                {dialogMode ===
+                "add"
                   ? "Add Transaction"
                   : "Update Transaction"}
               </Button>
