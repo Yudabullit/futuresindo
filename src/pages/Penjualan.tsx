@@ -140,6 +140,7 @@ const Penjualan = () => {
 
   const handleAddTransaction = () => {
     setDialogMode("add");
+    setEditingId(null);
 
     setFormData({
       transaction_number: "INV-",
@@ -156,7 +157,6 @@ const Penjualan = () => {
       notes: "",
     });
 
-    setEditingId(null);
     setDialogOpen(true);
   };
 
@@ -164,7 +164,7 @@ const Penjualan = () => {
     setDialogMode("edit");
 
     setFormData({
-      transaction_number: transaction.transaction_number,
+      transaction_number: transaction.transaction_number || "INV-",
       customer_name: transaction.customer_name || "",
       invoice_number: transaction.invoice_number || "",
       product_id: transaction.product_id || "",
@@ -191,64 +191,54 @@ const Penjualan = () => {
       return;
 
     try {
-      // Ambil transaksi yang akan dihapus
-      const { data: transaction, error: transactionError } =
-        await supabase
-          .from("penjualan")
-          .select("product_id, qty")
-          .eq("id", id)
-          .single();
+      const { data: transaction, error: fetchError } = await supabase
+        .from("penjualan")
+        .select("*")
+        .eq("id", id)
+        .single();
 
-      if (transactionError) throw transactionError;
+      if (fetchError) throw fetchError;
 
-      // Hapus transaksi
-      const { error: deleteError } = await supabase
+      const { error } = await supabase
         .from("penjualan")
         .delete()
         .eq("id", id);
 
-      if (deleteError) throw deleteError;
+      if (error) throw error;
 
-      // Kembalikan stok product
-      if (transaction?.product_id) {
-        const { data: product, error: productError } =
+      // Kembalikan stok ketika transaksi penjualan dihapus
+      if (transaction?.product_id && transaction?.qty) {
+        const { data: product, error: productError } = await supabase
+          .from("products")
+          .select("qty")
+          .eq("id", transaction.product_id)
+          .single();
+
+        if (!productError && product) {
+          const currentStock = Number(product.qty || 0);
+          const returnedStock =
+            currentStock + Number(transaction.qty || 0);
+
           await supabase
             .from("products")
-            .select("id, qty")
-            .eq("id", transaction.product_id)
-            .single();
-
-        if (productError) throw productError;
-
-        if (product) {
-          const restoredQty =
-            Number(product.qty || 0) +
-            Number(transaction.qty || 0);
-
-          const { error: stockError } = await supabase
-            .from("products")
             .update({
-              qty: restoredQty,
+              qty: returnedStock,
             })
             .eq("id", transaction.product_id);
-
-          if (stockError) throw stockError;
         }
       }
 
       await fetchTransactions();
 
-      // Refresh product list
-      const { data: updatedProducts } = await supabase
+      const { data: refreshedProducts } = await supabase
         .from("products")
         .select("*");
 
-      setProducts(updatedProducts || []);
+      setProducts(refreshedProducts || []);
 
       toast({
         title: "Success",
-        description:
-          "Transaction deleted and stock restored successfully",
+        description: "Transaction deleted successfully",
       });
     } catch (err: any) {
       toast({
@@ -264,22 +254,24 @@ const Penjualan = () => {
     e.preventDefault();
 
     try {
-      // Pastikan nomor transaksi dimulai INV-
+      // Pastikan nomor transaksi selalu diawali INV-
       let transactionNumber = formData.transaction_number.trim();
 
       if (!transactionNumber.startsWith("INV-")) {
         transactionNumber = `INV-${transactionNumber}`;
       }
 
-      // Pastikan setelah INV- ada angka/input
       if (transactionNumber === "INV-") {
-        throw new Error(
-          "Silakan masukkan nomor transaksi setelah INV-"
-        );
+        toast({
+          title: "Error",
+          description:
+            "Silakan masukkan nomor transaksi setelah INV-",
+          variant: "destructive",
+        });
+        return;
       }
 
-      const totalPrice =
-        formData.qty * formData.price;
+      const totalPrice = formData.qty * formData.price;
 
       const payload = {
         ...formData,
@@ -287,309 +279,197 @@ const Penjualan = () => {
         total_price: totalPrice,
       };
 
-      // ============================================
-      // TAMBAH PENJUALAN
-      // ============================================
       if (dialogMode === "add") {
-        // Cek apakah nomor transaksi sudah digunakan
-        const { data: existingTransaction, error: existingError } =
-          await supabase
-            .from("penjualan")
-            .select("id")
-            .eq("transaction_number", transactionNumber)
-            .maybeSingle();
-
-        if (existingError) throw existingError;
-
-        if (existingTransaction) {
-          throw new Error(
-            "Nomor transaksi tersebut sudah digunakan"
-          );
-        }
-
-        // Ambil product terbaru
-        const { data: product, error: productError } =
-          await supabase
-            .from("products")
-            .select("id, qty")
-            .eq("id", formData.product_id)
-            .single();
+        // Cek produk
+        const { data: product, error: productError } = await supabase
+          .from("products")
+          .select("qty")
+          .eq("id", formData.product_id)
+          .single();
 
         if (productError) throw productError;
 
         if (!product) {
-          throw new Error("Product tidak ditemukan");
+          throw new Error("Product not found");
         }
 
-        // Cek product
-        if (!formData.product_id) {
-          throw new Error(
-            "Silakan pilih product terlebih dahulu"
-          );
+        const currentStock = Number(product.qty || 0);
+        const requestedQty = Number(formData.qty || 0);
+
+        if (requestedQty <= 0) {
+          toast({
+            title: "Error",
+            description: "Qty harus lebih dari 0",
+            variant: "destructive",
+          });
+          return;
         }
 
-        // Cek stok
-        if (
-          Number(product.qty || 0) <
-          Number(formData.qty || 0)
-        ) {
-          throw new Error(
-            `Stok tidak cukup. Stok tersedia: ${product.qty}, jumlah penjualan: ${formData.qty}`
-          );
+        if (currentStock < requestedQty) {
+          toast({
+            title: "Stock Tidak Cukup",
+            description: `Stock tersedia hanya ${currentStock}`,
+            variant: "destructive",
+          });
+          return;
         }
 
-        // Simpan transaksi
-        const { error: insertError } =
-          await supabase
-            .from("penjualan")
-            .insert(payload);
+        // Insert transaksi
+        const { error } = await supabase
+          .from("penjualan")
+          .insert(payload);
 
-        if (insertError) throw insertError;
+        if (error) throw error;
 
-        // Kurangi stok
-        const newQty =
-          Number(product.qty || 0) -
-          Number(formData.qty || 0);
+        // Kurangi stok produk
+        const newStock = currentStock - requestedQty;
 
-        const { error: stockError } =
-          await supabase
-            .from("products")
-            .update({
-              qty: newQty,
-            })
-            .eq("id", formData.product_id);
+        const { error: stockError } = await supabase
+          .from("products")
+          .update({
+            qty: newStock,
+          })
+          .eq("id", formData.product_id);
 
         if (stockError) throw stockError;
 
         toast({
           title: "Success",
           description:
-            "Transaction added and stock reduced successfully",
+            "Transaction added and product stock updated successfully",
         });
-      }
-
-      // ============================================
-      // EDIT PENJUALAN
-      // ============================================
-      else if (editingId) {
-        // Cek nomor transaksi agar tidak duplikat
-        const { data: existingTransaction, error: existingError } =
+      } else if (editingId) {
+        // Ambil transaksi lama
+        const { data: oldTransaction, error: oldTransactionError } =
           await supabase
             .from("penjualan")
-            .select("id")
-            .eq("transaction_number", transactionNumber)
-            .neq("id", editingId)
-            .maybeSingle();
+            .select("*")
+            .eq("id", editingId)
+            .single();
 
-        if (existingError) throw existingError;
+        if (oldTransactionError) throw oldTransactionError;
 
-        if (existingTransaction) {
-          throw new Error(
-            "Nomor transaksi tersebut sudah digunakan"
-          );
-        }
-
-        // Ambil transaksi lama
-        const {
-          data: oldTransaction,
-          error: oldTransactionError,
-        } = await supabase
+        // Update transaksi
+        const { error } = await supabase
           .from("penjualan")
-          .select("product_id, qty")
-          .eq("id", editingId)
-          .single();
+          .update(payload)
+          .eq("id", editingId);
 
-        if (oldTransactionError)
-          throw oldTransactionError;
+        if (error) throw error;
 
-        if (!oldTransaction) {
-          throw new Error(
-            "Transaction tidak ditemukan"
-          );
-        }
+        // Jika produk atau qty berubah,
+        // kembalikan stok transaksi lama terlebih dahulu
+        if (oldTransaction) {
+          const oldProductId = oldTransaction.product_id;
+          const oldQty = Number(oldTransaction.qty || 0);
+          const newProductId = formData.product_id;
+          const newQty = Number(formData.qty || 0);
 
-        // ============================================
-        // PRODUCT TIDAK BERUBAH
-        // ============================================
-        if (
-          oldTransaction.product_id ===
-          formData.product_id
-        ) {
-          const oldQty =
-            Number(oldTransaction.qty || 0);
-
-          const newQty =
-            Number(formData.qty || 0);
-
-          const qtyDifference =
-            newQty - oldQty;
-
-          if (qtyDifference !== 0) {
-            const {
-              data: product,
-              error: productError,
-            } = await supabase
+          // Produk sama
+          if (oldProductId === newProductId) {
+            const { data: product, error: productError } = await supabase
               .from("products")
-              .select("id, qty")
-              .eq("id", formData.product_id)
+              .select("qty")
+              .eq("id", newProductId)
               .single();
 
-            if (productError)
-              throw productError;
+            if (productError) throw productError;
 
-            if (!product) {
-              throw new Error(
-                "Product tidak ditemukan"
-              );
-            }
+            if (product) {
+              const currentStock = Number(product.qty || 0);
 
-            // Qty penjualan bertambah
-            if (qtyDifference > 0) {
-              if (
-                Number(product.qty || 0) <
-                qtyDifference
-              ) {
+              // Kembalikan qty lama, kemudian kurangi qty baru
+              const stockAfterReturn =
+                currentStock + oldQty;
+
+              if (stockAfterReturn < newQty) {
                 throw new Error(
-                  `Stok tidak cukup. Stok tersedia: ${product.qty}, tambahan penjualan: ${qtyDifference}`
+                  `Stock tidak cukup. Stock tersedia ${stockAfterReturn}`
                 );
+              }
+
+              const finalStock =
+                stockAfterReturn - newQty;
+
+              const { error: stockError } = await supabase
+                .from("products")
+                .update({
+                  qty: finalStock,
+                })
+                .eq("id", newProductId);
+
+              if (stockError) throw stockError;
+            }
+          } else {
+            // Jika produk berbeda:
+            // kembalikan stok produk lama
+            if (oldProductId && oldQty > 0) {
+              const { data: oldProduct, error: oldProductError } =
+                await supabase
+                  .from("products")
+                  .select("qty")
+                  .eq("id", oldProductId)
+                  .single();
+
+              if (oldProductError) throw oldProductError;
+
+              if (oldProduct) {
+                const restoredStock =
+                  Number(oldProduct.qty || 0) + oldQty;
+
+                const { error: restoreError } = await supabase
+                  .from("products")
+                  .update({
+                    qty: restoredStock,
+                  })
+                  .eq("id", oldProductId);
+
+                if (restoreError) throw restoreError;
               }
             }
 
-            const updatedStock =
-              Number(product.qty || 0) -
-              qtyDifference;
+            // Kurangi stok produk baru
+            if (newProductId && newQty > 0) {
+              const { data: newProduct, error: newProductError } =
+                await supabase
+                  .from("products")
+                  .select("qty")
+                  .eq("id", newProductId)
+                  .single();
 
-            const {
-              error: stockError,
-            } = await supabase
-              .from("products")
-              .update({
-                qty: updatedStock,
-              })
-              .eq(
-                "id",
-                formData.product_id
-              );
+              if (newProductError) throw newProductError;
 
-            if (stockError)
-              throw stockError;
-          }
-        }
+              if (newProduct) {
+                const currentNewStock =
+                  Number(newProduct.qty || 0);
 
-        // ============================================
-        // PRODUCT BERUBAH
-        // ============================================
-        else {
-          // --------------------------------------------
-          // Kembalikan stok product lama
-          // --------------------------------------------
-          if (oldTransaction.product_id) {
-            const {
-              data: oldProduct,
-              error: oldProductError,
-            } = await supabase
-              .from("products")
-              .select("id, qty")
-              .eq(
-                "id",
-                oldTransaction.product_id
-              )
-              .single();
+                if (currentNewStock < newQty) {
+                  throw new Error(
+                    `Stock produk baru tidak cukup. Stock tersedia ${currentNewStock}`
+                  );
+                }
 
-            if (oldProductError)
-              throw oldProductError;
+                const finalNewStock =
+                  currentNewStock - newQty;
 
-            if (oldProduct) {
-              const restoredQty =
-                Number(oldProduct.qty || 0) +
-                Number(oldTransaction.qty || 0);
+                const { error: newStockError } =
+                  await supabase
+                    .from("products")
+                    .update({
+                      qty: finalNewStock,
+                    })
+                    .eq("id", newProductId);
 
-              const {
-                error: restoreError,
-              } = await supabase
-                .from("products")
-                .update({
-                  qty: restoredQty,
-                })
-                .eq(
-                  "id",
-                  oldTransaction.product_id
-                );
-
-              if (restoreError)
-                throw restoreError;
+                if (newStockError) throw newStockError;
+              }
             }
           }
-
-          // --------------------------------------------
-          // Ambil product baru
-          // --------------------------------------------
-          const {
-            data: newProduct,
-            error: newProductError,
-          } = await supabase
-            .from("products")
-            .select("id, qty")
-            .eq(
-              "id",
-              formData.product_id
-            )
-            .single();
-
-          if (newProductError)
-            throw newProductError;
-
-          if (!newProduct) {
-            throw new Error(
-              "Product baru tidak ditemukan"
-            );
-          }
-
-          // Cek stok product baru
-          if (
-            Number(newProduct.qty || 0) <
-            Number(formData.qty || 0)
-          ) {
-            throw new Error(
-              `Stok product baru tidak cukup. Stok tersedia: ${newProduct.qty}, jumlah penjualan: ${formData.qty}`
-            );
-          }
-
-          // Kurangi stok product baru
-          const updatedNewStock =
-            Number(newProduct.qty || 0) -
-            Number(formData.qty || 0);
-
-          const {
-            error: newStockError,
-          } = await supabase
-            .from("products")
-            .update({
-              qty: updatedNewStock,
-            })
-            .eq(
-              "id",
-              formData.product_id
-            );
-
-          if (newStockError)
-            throw newStockError;
         }
-
-        // Update transaksi
-        const { error: updateError } =
-          await supabase
-            .from("penjualan")
-            .update(payload)
-            .eq("id", editingId);
-
-        if (updateError)
-          throw updateError;
 
         toast({
           title: "Success",
           description:
-            "Transaction updated and stock adjusted successfully",
+            "Transaction updated successfully",
         });
       }
 
@@ -597,27 +477,22 @@ const Penjualan = () => {
 
       await fetchTransactions();
 
-      // Refresh products
-      const { data: updatedProducts } =
-        await supabase
-          .from("products")
-          .select("*");
+      // Refresh product stock
+      const { data: refreshedProducts } = await supabase
+        .from("products")
+        .select("*");
 
-      setProducts(updatedProducts || []);
+      setProducts(refreshedProducts || []);
     } catch (err: any) {
       toast({
         title: "Error",
         description:
-          err.message ||
-          "Failed to save transaction",
+          err.message || "Failed to save transaction",
         variant: "destructive",
       });
     }
   };
 
-  // ============================================
-  // FORMAT TANGGAL
-  // ============================================
   const formatDate = (
     date: string | null | undefined
   ) => {
@@ -636,18 +511,16 @@ const Penjualan = () => {
   const rowsPerPage = 10;
 
   const totalPages =
-    Math.ceil(
-      transactions.length / rowsPerPage
-    ) || 1;
+    Math.ceil(transactions.length / rowsPerPage) || 1;
 
-  const paginatedTransactions =
-    transactions.slice(
-      (page - 1) * rowsPerPage,
-      page * rowsPerPage
-    );
+  const paginatedTransactions = transactions.slice(
+    (page - 1) * rowsPerPage,
+    page * rowsPerPage
+  );
 
   return (
     <div className="space-y-6">
+
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold">
@@ -656,6 +529,7 @@ const Penjualan = () => {
         </div>
 
         <div className="flex flex-wrap gap-3 mt-4 lg:mt-0">
+
           <Button
             onClick={handleAddTransaction}
             className="flex items-center"
@@ -720,6 +594,7 @@ const Penjualan = () => {
               Export
             </Button>
           </XlsxTable>
+
         </div>
       </div>
 
@@ -740,233 +615,236 @@ const Penjualan = () => {
         </div>
       )}
 
-      {!loading &&
-        transactions.length === 0 && (
-          <div className="text-center py-10 text-gray-500">
-            No transactions found
-          </div>
-        )}
+      {!loading && transactions.length === 0 && (
+        <div className="text-center py-10 text-gray-500">
+          No transactions found
+        </div>
+      )}
 
-      {!loading &&
-        transactions.length > 0 && (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableCell className="font-semibold">
-                  Transaction No
-                </TableCell>
+      {!loading && transactions.length > 0 && (
+        <Table>
 
-                <TableCell className="font-semibold">
-                  Customer
-                </TableCell>
+          <TableHeader>
+            <TableRow>
 
-                <TableCell className="font-semibold">
-                  Invoice
-                </TableCell>
+              <TableCell className="font-semibold">
+                Transaction No
+              </TableCell>
 
-                <TableCell className="font-semibold">
-                  Tanggal
-                </TableCell>
+              <TableCell className="font-semibold">
+                Customer
+              </TableCell>
 
-                <TableCell className="font-semibold">
-                  Product Name
-                </TableCell>
+              <TableCell className="font-semibold">
+                Invoice
+              </TableCell>
 
-                <TableCell className="font-semibold">
-                  Code
-                </TableCell>
+              <TableCell className="font-semibold">
+                Tanggal
+              </TableCell>
 
-                <TableCell className="text-right font-semibold">
-                  Qty
-                </TableCell>
+              <TableCell className="font-semibold">
+                Product Name
+              </TableCell>
 
-                <TableCell className="text-right font-semibold">
-                  Total Price
-                </TableCell>
+              <TableCell className="font-semibold">
+                Code
+              </TableCell>
 
-                <TableCell className="font-semibold">
-                  Payment
-                </TableCell>
+              <TableCell className="text-right font-semibold">
+                Qty
+              </TableCell>
 
-                <TableCell className="font-semibold">
-                  Status
-                </TableCell>
+              <TableCell className="text-right font-semibold">
+                Total Price
+              </TableCell>
 
-                <TableCell className="text-center font-semibold">
-                  Actions
-                </TableCell>
-              </TableRow>
-            </TableHeader>
+              <TableCell className="font-semibold">
+                Payment
+              </TableCell>
 
-            <TableBody>
-              {paginatedTransactions.map(
-                (transaction) => (
-                  <TableRow
-                    key={transaction.id}
-                  >
-                    <TableCell className="font-medium">
-                      {
-                        transaction.transaction_number
+              <TableCell className="font-semibold">
+                Status
+              </TableCell>
+
+              <TableCell className="text-center font-semibold">
+                Actions
+              </TableCell>
+
+            </TableRow>
+          </TableHeader>
+
+          <TableBody>
+
+            {paginatedTransactions.map(
+              (transaction) => (
+                <TableRow key={transaction.id}>
+
+                  <TableCell className="font-medium">
+                    {transaction.transaction_number}
+                  </TableCell>
+
+                  <TableCell>
+                    {transaction.customer_name || "-"}
+                  </TableCell>
+
+                  <TableCell>
+                    {transaction.invoice_number || "-"}
+                  </TableCell>
+
+                  <TableCell>
+                    {formatDate(transaction.created_at)}
+                  </TableCell>
+
+                  <TableCell>
+                    {transaction.product_name || "-"}
+                  </TableCell>
+
+                  <TableCell>
+                    {transaction.product_code || "-"}
+                  </TableCell>
+
+                  <TableCell className="text-right">
+                    {transaction.qty?.toLocaleString() ||
+                      "0"}
+                  </TableCell>
+
+                  <TableCell className="text-right">
+                    Rp{" "}
+                    {Number(
+                      transaction.total_price || 0
+                    ).toLocaleString()}
+                  </TableCell>
+
+                  <TableCell>
+                    <span
+                      className={`px-2 py-1 rounded text-xs ${
+                        transaction.payment_method ===
+                        "Cash"
+                          ? "bg-blue-100 text-blue-800"
+                          : "bg-green-100 text-green-800"
+                      }`}
+                    >
+                      {transaction.payment_method}
+                    </span>
+                  </TableCell>
+
+                  <TableCell>
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        transaction.status ===
+                        "Received"
+                          ? "bg-green-100 text-green-800"
+                          : transaction.status ===
+                            "Sent"
+                          ? "bg-yellow-100 text-yellow-800"
+                          : "bg-blue-100 text-blue-800"
+                      }`}
+                    >
+                      {transaction.status}
+                    </span>
+                  </TableCell>
+
+                  <TableCell className="flex justify-center space-x-2">
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        handleEditTransaction(
+                          transaction
+                        )
                       }
-                    </TableCell>
+                      className="px-3"
+                    >
+                      <Edit3 className="h-4 w-4" />
+                    </Button>
 
-                    <TableCell>
-                      {transaction.customer_name ||
-                        "-"}
-                    </TableCell>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() =>
+                        handleDeleteTransaction(
+                          transaction.id
+                        )
+                      }
+                      className="px-3"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
 
-                    <TableCell>
-                      {transaction.invoice_number ||
-                        "-"}
-                    </TableCell>
+                  </TableCell>
 
-                    <TableCell>
-                      {formatDate(
-                        transaction.created_at
-                      )}
-                    </TableCell>
+                </TableRow>
+              )
+            )}
 
-                    <TableCell>
-                      {transaction.product_name ||
-                        "-"}
-                    </TableCell>
+          </TableBody>
 
-                    <TableCell>
-                      {transaction.product_code ||
-                        "-"}
-                    </TableCell>
+        </Table>
+      )}
 
-                    <TableCell className="text-right">
-                      {transaction.qty?.toLocaleString() ||
-                        "0"}
-                    </TableCell>
+      {!loading && transactions.length > 0 && (
+        <Pagination>
 
-                    <TableCell className="text-right">
-                      Rp{" "}
-                      {Number(
-                        transaction.total_price ||
-                          0
-                      ).toLocaleString()}
-                    </TableCell>
+          <PaginationContent>
 
-                    <TableCell>
-                      <span
-                        className={`px-2 py-1 rounded text-xs ${
-                          transaction.payment_method ===
-                          "Cash"
-                            ? "bg-blue-100 text-blue-800"
-                            : "bg-green-100 text-green-800"
-                        }`}
-                      >
-                        {
-                          transaction.payment_method
-                        }
-                      </span>
-                    </TableCell>
+            <PaginationItem>
+              <PaginationPrevious
+                onClick={() =>
+                  setPage((p) =>
+                    Math.max(p - 1, 1)
+                  )
+                }
+              />
+            </PaginationItem>
 
-                    <TableCell>
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          transaction.status ===
-                          "Received"
-                            ? "bg-green-100 text-green-800"
-                            : transaction.status ===
-                              "Sent"
-                            ? "bg-yellow-100 text-yellow-800"
-                            : "bg-blue-100 text-blue-800"
-                        }`}
-                      >
-                        {transaction.status}
-                      </span>
-                    </TableCell>
+            {Array.from({
+              length: totalPages,
+            }).map((_, i) => (
+              <PaginationItem key={i}>
 
-                    <TableCell className="flex justify-center space-x-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          handleEditTransaction(
-                            transaction
-                          )
-                        }
-                        className="px-3"
-                      >
-                        <Edit3 className="h-4 w-4" />
-                      </Button>
-
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() =>
-                          handleDeleteTransaction(
-                            transaction.id
-                          )
-                        }
-                        className="px-3"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                )
-              )}
-            </TableBody>
-          </Table>
-        )}
-
-      {!loading &&
-        transactions.length > 0 && (
-          <Pagination>
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  onClick={() =>
-                    setPage((p) =>
-                      Math.max(p - 1, 1)
-                    )
+                <PaginationLink
+                  isActive={
+                    i + 1 === page
                   }
-                />
-              </PaginationItem>
-
-              {Array.from({
-                length: totalPages,
-              }).map((_, i) => (
-                <PaginationItem key={i}>
-                  <PaginationLink
-                    isActive={
-                      i + 1 === page
-                    }
-                    onClick={() =>
-                      setPage(i + 1)
-                    }
-                  >
-                    {i + 1}
-                  </PaginationLink>
-                </PaginationItem>
-              ))}
-
-              <PaginationItem>
-                <PaginationNext
                   onClick={() =>
-                    setPage((p) =>
-                      Math.min(
-                        p + 1,
-                        totalPages
-                      )
-                    )
+                    setPage(i + 1)
                   }
-                />
+                >
+                  {i + 1}
+                </PaginationLink>
+
               </PaginationItem>
-            </PaginationContent>
-          </Pagination>
-        )}
+            ))}
+
+            <PaginationItem>
+              <PaginationNext
+                onClick={() =>
+                  setPage((p) =>
+                    Math.min(
+                      p + 1,
+                      totalPages
+                    )
+                  )
+                }
+              />
+            </PaginationItem>
+
+          </PaginationContent>
+
+        </Pagination>
+      )}
 
       <Dialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
       >
+
         <DialogContent className="w-full max-w-lg">
+
           <DialogHeader>
+
             <DialogTitle>
               {dialogMode === "add"
                 ? "Add Sales Transaction"
@@ -976,14 +854,18 @@ const Penjualan = () => {
             <DialogDescription>
               Fill in transaction details below
             </DialogDescription>
+
           </DialogHeader>
 
           <form
             onSubmit={handleSubmit}
             className="space-y-4"
           >
+
             <div className="grid grid-cols-2 gap-4">
+
               <div>
+
                 <label className="block text-sm font-medium mb-1">
                   Transaction No *
                 </label>
@@ -993,46 +875,41 @@ const Penjualan = () => {
                     formData.transaction_number
                   }
                   onChange={(e) => {
-                    let value =
-                      e.target.value;
+                    let value = e.target.value;
 
-                    // Selalu paksa prefix INV-
-                    if (
-                      !value.startsWith("INV-")
-                    ) {
-                      value =
-                        "INV-" +
-                        value.replace(
-                          /^INV-/,
-                          ""
-                        );
+                    if (!value.startsWith("INV-")) {
+                      value = "INV-" + value.replace(/^INV-/i, "");
                     }
-
-                    // Hilangkan INV- ganda
-                    value =
-                      "INV-" +
-                      value
-                        .replace(
-                          /^INV-/,
-                          ""
-                        )
-                        .replace(
-                          /^INV-/,
-                          ""
-                        );
 
                     setFormData({
                       ...formData,
-                      transaction_number:
-                        value,
+                      transaction_number: value,
                     });
                   }}
-                  placeholder="INV-001"
+                  onFocus={() => {
+                    if (
+                      !formData.transaction_number.startsWith(
+                        "INV-"
+                      )
+                    ) {
+                      setFormData({
+                        ...formData,
+                        transaction_number:
+                          "INV-",
+                      });
+                    }
+                  }}
                   required
                 />
+
+                <p className="text-xs text-gray-500 mt-1">
+                  Format: INV- + nomor yang kamu masukkan sendiri
+                </p>
+
               </div>
 
               <div>
+
                 <label className="block text-sm font-medium mb-1">
                   Customer Name
                 </label>
@@ -1050,10 +927,13 @@ const Penjualan = () => {
                   }
                   placeholder="Customer name"
                 />
+
               </div>
+
             </div>
 
             <div>
+
               <label className="block text-sm font-medium mb-1">
                 Invoice
               </label>
@@ -1071,9 +951,11 @@ const Penjualan = () => {
                 }
                 placeholder="Invoice number"
               />
+
             </div>
 
             <div>
+
               <label className="block text-sm font-medium mb-1">
                 Select Product *
               </label>
@@ -1086,11 +968,13 @@ const Penjualan = () => {
                   handleProductChange
                 }
               >
+
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Choose a product" />
                 </SelectTrigger>
 
                 <SelectContent>
+
                   {products.map((p) => (
                     <SelectItem
                       key={p.id}
@@ -1101,12 +985,17 @@ const Penjualan = () => {
                       (Stock: {p.qty})
                     </SelectItem>
                   ))}
+
                 </SelectContent>
+
               </Select>
+
             </div>
 
             <div className="grid grid-cols-3 gap-4">
+
               <div>
+
                 <label className="block text-sm font-medium mb-1">
                   Qty *
                 </label>
@@ -1124,9 +1013,11 @@ const Penjualan = () => {
                   }
                   required
                 />
+
               </div>
 
               <div>
+
                 <label className="block text-sm font-medium mb-1">
                   Price *
                 </label>
@@ -1136,28 +1027,26 @@ const Penjualan = () => {
                   min="0"
                   value={formData.price}
                   onChange={(e) =>
-                    setFormData(
-                      (prev) => ({
-                        ...prev,
-                        price:
-                          Number(
-                            e.target
-                              .value
-                          ) || 0,
-                        total_price:
-                          prev.qty *
-                          (Number(
-                            e.target
-                              .value
-                          ) || 0),
-                      })
-                    )
+                    setFormData((prev) => ({
+                      ...prev,
+                      price:
+                        Number(
+                          e.target.value
+                        ) || 0,
+                      total_price:
+                        prev.qty *
+                        (Number(
+                          e.target.value
+                        ) || 0),
+                    }))
                   }
                   required
                 />
+
               </div>
 
               <div>
+
                 <label className="block text-sm font-medium mb-1">
                   Total Price
                 </label>
@@ -1170,11 +1059,15 @@ const Penjualan = () => {
                   disabled
                   className="bg-gray-100"
                 />
+
               </div>
+
             </div>
 
             <div className="grid grid-cols-2 gap-4">
+
               <div>
+
                 <label className="block text-sm font-medium mb-1">
                   Payment Method
                 </label>
@@ -1191,11 +1084,13 @@ const Penjualan = () => {
                     })
                   }
                 >
+
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Payment" />
                   </SelectTrigger>
 
                   <SelectContent>
+
                     <SelectItem value="Cash">
                       Cash
                     </SelectItem>
@@ -1207,11 +1102,15 @@ const Penjualan = () => {
                     <SelectItem value="Credit">
                       Credit
                     </SelectItem>
+
                   </SelectContent>
+
                 </Select>
+
               </div>
 
               <div>
+
                 <label className="block text-sm font-medium mb-1">
                   Status
                 </label>
@@ -1225,11 +1124,13 @@ const Penjualan = () => {
                     })
                   }
                 >
+
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
 
                   <SelectContent>
+
                     <SelectItem value="Prepared">
                       Prepared
                     </SelectItem>
@@ -1241,12 +1142,17 @@ const Penjualan = () => {
                     <SelectItem value="Received">
                       Received
                     </SelectItem>
+
                   </SelectContent>
+
                 </Select>
+
               </div>
+
             </div>
 
             <div className="flex justify-end space-x-3 pt-4">
+
               <Button
                 type="button"
                 variant="outline"
@@ -1262,14 +1168,17 @@ const Penjualan = () => {
                   ? "Add Transaction"
                   : "Update Transaction"}
               </Button>
+
             </div>
+
           </form>
+
         </DialogContent>
+
       </Dialog>
+
     </div>
   );
 };
-
-export default Penjualan;
 
 export default Penjualan;
