@@ -50,7 +50,7 @@ const Penjualan = () => {
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
-    transaction_number: "",
+    transaction_number: "INV-",
     customer_name: "",
     invoice_number: "",
     product_id: "",
@@ -142,7 +142,7 @@ const Penjualan = () => {
     setDialogMode("add");
 
     setFormData({
-      transaction_number: `PJ-${Date.now().toString().slice(-6)}`,
+      transaction_number: "INV-",
       customer_name: "",
       invoice_number: "",
       product_id: "",
@@ -293,8 +293,7 @@ const Penjualan = () => {
   );
 
   return (
-    <div className="space-y-6">
-
+    <div>
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold">
@@ -409,7 +408,6 @@ const Penjualan = () => {
                 Invoice
               </TableCell>
 
-              {/* TANGGAL */}
               <TableCell className="font-semibold">
                 Tanggal
               </TableCell>
@@ -461,7 +459,6 @@ const Penjualan = () => {
                     {transaction.invoice_number || "-"}
                   </TableCell>
 
-                  {/* TANGGAL */}
                   <TableCell>
                     {formatDate(
                       transaction.created_at
@@ -634,13 +631,19 @@ const Penjualan = () => {
                   value={
                     formData.transaction_number
                   }
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    let value = e.target.value;
+
+                    if (!value.startsWith("INV-")) {
+                      value = "INV-" + value.replace(/^INV-/i, "");
+                    }
+
                     setFormData({
                       ...formData,
-                      transaction_number:
-                        e.target.value,
-                    })
-                  }
+                      transaction_number: value,
+                    });
+                  }}
+                  placeholder="INV-001"
                   required
                 />
               </div>
