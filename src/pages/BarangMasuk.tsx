@@ -95,9 +95,6 @@ const BarangMasuk = () => {
 
   const { toast } = useToast();
 
-  /*
-   * DATA UTAMA ORDER
-   */
   const [formData, setFormData] = useState({
     transaction_number: "",
     supplier_name: "",
@@ -106,9 +103,6 @@ const BarangMasuk = () => {
     notes: "",
   });
 
-  /*
-   * DAFTAR PRODUK DALAM SATU ORDER
-   */
   const [orderItems, setOrderItems] = useState<
     OrderItem[]
   >([
@@ -227,7 +221,8 @@ const BarangMasuk = () => {
               product_id: productId,
               product_name:
                 product.description || "",
-              product_code: product.code || "",
+              product_code:
+                product.code || "",
               price,
               total_price:
                 item.qty * price,
@@ -374,9 +369,6 @@ const BarangMasuk = () => {
    * ============================
    * EDIT TRANSACTION
    * ============================
-   *
-   * Edit tetap seperti sebelumnya:
-   * satu row/product.
    */
 
   const handleEditTransaction = (
@@ -473,7 +465,7 @@ const BarangMasuk = () => {
 
     try {
       /*
-       * Pastikan ada product.
+       * Pastikan ada product
        */
 
       if (orderItems.length === 0) {
@@ -488,7 +480,7 @@ const BarangMasuk = () => {
       }
 
       /*
-       * Pastikan semua product sudah dipilih.
+       * Pastikan semua product sudah dipilih
        */
 
       const invalidProduct =
@@ -510,7 +502,7 @@ const BarangMasuk = () => {
       }
 
       /*
-       * Pastikan Qty > 0.
+       * Pastikan Qty > 0
        */
 
       const invalidQty =
@@ -569,9 +561,11 @@ const BarangMasuk = () => {
           total_price:
             item.total_price,
 
-          status: formData.status,
+          status:
+            formData.status,
 
-          notes: formData.notes,
+          notes:
+            formData.notes,
         };
 
         const { error } =
@@ -626,7 +620,8 @@ const BarangMasuk = () => {
             status:
               formData.status,
 
-            notes: formData.notes,
+            notes:
+              formData.notes,
           }));
 
         const { error } =
@@ -663,6 +658,76 @@ const BarangMasuk = () => {
 
   /*
    * ============================
+   * GROUPING ORDER
+   *
+   * Beberapa row dengan
+   * transaction_number yang sama
+   * ditampilkan sebagai 1 order.
+   *
+   * Database tidak diubah.
+   * ============================
+   */
+
+  const groupedTransactions =
+    transactions.reduce(
+      (
+        groups: Record<string, any>,
+        transaction
+      ) => {
+        const key =
+          transaction.transaction_number;
+
+        if (!groups[key]) {
+          groups[key] = {
+            ...transaction,
+            products: [],
+            total_qty: 0,
+            total_price: 0,
+          };
+        }
+
+        groups[key].products.push({
+          id: transaction.id,
+
+          product_name:
+            transaction.product_name,
+
+          product_code:
+            transaction.product_code,
+
+          qty: Number(
+            transaction.qty || 0
+          ),
+
+          price: Number(
+            transaction.price || 0
+          ),
+
+          total_price: Number(
+            transaction.total_price || 0
+          ),
+        });
+
+        groups[key].total_qty +=
+          Number(transaction.qty || 0);
+
+        groups[key].total_price +=
+          Number(
+            transaction.total_price || 0
+          );
+
+        return groups;
+      },
+      {}
+    );
+
+  const groupedTransactionList =
+    Object.values(
+      groupedTransactions
+    );
+
+  /*
+   * ============================
    * PAGINATION
    * ============================
    */
@@ -671,12 +736,12 @@ const BarangMasuk = () => {
 
   const totalPages =
     Math.ceil(
-      transactions.length /
+      groupedTransactionList.length /
         rowsPerPage
     ) || 1;
 
   const paginatedTransactions =
-    transactions.slice(
+    groupedTransactionList.slice(
       (page - 1) * rowsPerPage,
       page * rowsPerPage
     );
@@ -688,7 +753,7 @@ const BarangMasuk = () => {
    */
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold">
@@ -698,9 +763,7 @@ const BarangMasuk = () => {
 
         <div className="flex flex-wrap gap-3 mt-4 lg:mt-0">
           <Button
-            onClick={
-              handleAddTransaction
-            }
+            onClick={handleAddTransaction}
             className="flex items-center"
           >
             <Plus className="mr-2 h-4 w-4" />
@@ -734,6 +797,10 @@ const BarangMasuk = () => {
               {
                 header: "Qty",
                 key: "qty",
+              },
+              {
+                header: "Price",
+                key: "price",
               },
               {
                 header: "Total Price",
@@ -779,160 +846,271 @@ const BarangMasuk = () => {
       )}
 
       {!loading &&
-        transactions.length === 0 && (
+        groupedTransactionList.length ===
+          0 && (
           <div className="text-center py-10 text-gray-500">
             No transactions found
           </div>
         )}
 
       {!loading &&
-        transactions.length > 0 && (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableCell className="font-semibold">
-                  Transaction No
-                </TableCell>
+        groupedTransactionList.length >
+          0 && (
+          <div className="mt-4 overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableCell className="font-semibold">
+                    Transaction No
+                  </TableCell>
 
-                <TableCell className="font-semibold">
-                  Supplier
-                </TableCell>
+                  <TableCell className="font-semibold">
+                    Supplier
+                  </TableCell>
 
-                <TableCell className="font-semibold">
-                  Invoice No
-                </TableCell>
+                  <TableCell className="font-semibold">
+                    Invoice No
+                  </TableCell>
 
-                <TableCell className="font-semibold">
-                  Product Name
-                </TableCell>
+                  <TableCell className="font-semibold">
+                    Product Name
+                  </TableCell>
 
-                <TableCell className="font-semibold">
-                  Code
-                </TableCell>
+                  <TableCell className="font-semibold">
+                    Code
+                  </TableCell>
 
-                <TableCell className="text-right font-semibold">
-                  Qty
-                </TableCell>
+                  <TableCell className="text-right font-semibold">
+                    Qty
+                  </TableCell>
 
-                <TableCell className="text-right font-semibold">
-                  Total Price
-                </TableCell>
+                  <TableCell className="text-right font-semibold">
+                    Total Price
+                  </TableCell>
 
-                <TableCell className="font-semibold">
-                  Status
-                </TableCell>
+                  <TableCell className="font-semibold">
+                    Status
+                  </TableCell>
 
-                <TableCell className="text-center font-semibold">
-                  Actions
-                </TableCell>
-              </TableRow>
-            </TableHeader>
+                  <TableCell className="text-center font-semibold">
+                    Actions
+                  </TableCell>
+                </TableRow>
+              </TableHeader>
 
-            <TableBody>
-              {paginatedTransactions.map(
-                (t) => (
-                  <TableRow key={t.id}>
-                    <TableCell className="font-medium">
-                      {
-                        t.transaction_number
+              <TableBody>
+                {paginatedTransactions.map(
+                  (transaction: any) => (
+                    <TableRow
+                      key={
+                        transaction.transaction_number
                       }
-                    </TableCell>
+                    >
+                      {/* TRANSACTION */}
 
-                    <TableCell>
-                      {t.supplier_name ||
-                        "-"}
-                    </TableCell>
-
-                    <TableCell>
-                      {t.invoice_number ||
-                        "-"}
-                    </TableCell>
-
-                    <TableCell>
-                      {t.product_name ||
-                        "-"}
-                    </TableCell>
-
-                    <TableCell>
-                      {t.product_code ||
-                        "-"}
-                    </TableCell>
-
-                    <TableCell className="text-right">
-                      {t.qty?.toLocaleString() ||
-                        "0"}
-                    </TableCell>
-
-                    <TableCell className="text-right">
-                      Rp{" "}
-                      {Number(
-                        t.total_price ||
-                          0
-                      ).toLocaleString()}
-                    </TableCell>
-
-                    <TableCell>
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          t.status ===
-                          "Barang Diterima"
-                            ? "bg-green-100 text-green-800"
-                            : t.status ===
-                              "Tidak Diterima"
-                            ? "bg-red-100 text-red-800"
-                            : "bg-yellow-100 text-yellow-800"
-                        }`}
-                      >
-                        {t.status}
-                      </span>
-                    </TableCell>
-
-                    <TableCell className="flex justify-center space-x-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          handleEditTransaction(
-                            t
-                          )
+                      <TableCell className="font-medium align-top">
+                        {
+                          transaction.transaction_number
                         }
-                        className="px-3"
-                      >
-                        <Edit3 className="h-4 w-4" />
-                      </Button>
+                      </TableCell>
 
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() =>
-                          handleDeleteTransaction(
-                            t.id
-                          )
-                        }
-                        className="px-3"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                )
-              )}
-            </TableBody>
-          </Table>
+                      {/* SUPPLIER */}
+
+                      <TableCell className="align-top">
+                        {transaction.supplier_name ||
+                          "-"}
+                      </TableCell>
+
+                      {/* INVOICE */}
+
+                      <TableCell className="align-top">
+                        {transaction.invoice_number ||
+                          "-"}
+                      </TableCell>
+
+                      {/* PRODUCTS */}
+
+                      <TableCell className="align-top">
+                        <div className="space-y-1">
+                          {transaction.products.map(
+                            (
+                              product: any,
+                              index: number
+                            ) => (
+                              <div
+                                key={index}
+                                className="min-h-[24px]"
+                              >
+                                {product.product_name ||
+                                  "-"}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </TableCell>
+
+                      {/* CODE */}
+
+                      <TableCell className="align-top">
+                        <div className="space-y-1">
+                          {transaction.products.map(
+                            (
+                              product: any,
+                              index: number
+                            ) => (
+                              <div
+                                key={index}
+                                className="min-h-[24px]"
+                              >
+                                {product.product_code ||
+                                  "-"}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </TableCell>
+
+                      {/* QTY */}
+
+                      <TableCell className="text-right align-top">
+                        <div className="space-y-1">
+                          {transaction.products.map(
+                            (
+                              product: any,
+                              index: number
+                            ) => (
+                              <div
+                                key={index}
+                                className="min-h-[24px]"
+                              >
+                                {product.qty.toLocaleString()}
+                              </div>
+                            )
+                          )}
+
+                          {transaction.products
+                            .length > 1 && (
+                            <div className="border-t mt-2 pt-1 font-bold">
+                              {transaction.total_qty.toLocaleString()}
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+
+                      {/* TOTAL PRICE */}
+
+                      <TableCell className="text-right align-top">
+                        <div className="space-y-1">
+                          {transaction.products.map(
+                            (
+                              product: any,
+                              index: number
+                            ) => (
+                              <div
+                                key={index}
+                                className="min-h-[24px]"
+                              >
+                                Rp{" "}
+                                {product.total_price.toLocaleString(
+                                  "id-ID"
+                                )}
+                              </div>
+                            )
+                          )}
+
+                          {transaction.products
+                            .length > 1 && (
+                            <div className="border-t mt-2 pt-1 font-bold">
+                              Rp{" "}
+                              {transaction.total_price.toLocaleString(
+                                "id-ID"
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+
+                      {/* STATUS */}
+
+                      <TableCell className="align-top">
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            transaction.status ===
+                            "Barang Diterima"
+                              ? "bg-green-100 text-green-800"
+                              : transaction.status ===
+                                "Tidak Diterima"
+                              ? "bg-red-100 text-red-800"
+                              : "bg-yellow-100 text-yellow-800"
+                          }`}
+                        >
+                          {
+                            transaction.status
+                          }
+                        </span>
+                      </TableCell>
+
+                      {/* ACTIONS */}
+
+                      <TableCell className="align-top">
+                        <div className="flex justify-center space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              handleEditTransaction(
+                                transaction.products[0]
+                                  ? {
+                                      ...transaction,
+                                      ...transaction.products[0],
+                                      id: transaction
+                                        .products[0]
+                                        .id,
+                                    }
+                                  : transaction
+                              )
+                            }
+                            className="px-3"
+                          >
+                            <Edit3 className="h-4 w-4" />
+                          </Button>
+
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() =>
+                              handleDeleteTransaction(
+                                transaction
+                                  .products[0]
+                                  ?.id
+                              )
+                            }
+                            className="px-3"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                )}
+              </TableBody>
+            </Table>
+          </div>
         )}
 
+      {/* PAGINATION */}
+
       {!loading &&
-        transactions.length > 0 && (
+        groupedTransactionList.length >
+          0 && (
           <Pagination>
             <PaginationContent>
               <PaginationItem>
                 <PaginationPrevious
                   onClick={() =>
                     setPage((p) =>
-                      Math.max(
-                        p - 1,
-                        1
-                      )
+                      Math.max(p - 1, 1)
                     )
                   }
                 />
@@ -973,15 +1151,11 @@ const BarangMasuk = () => {
           </Pagination>
         )}
 
-      {/* ============================ */}
       {/* DIALOG */}
-      {/* ============================ */}
 
       <Dialog
         open={dialogOpen}
-        onOpenChange={
-          setDialogOpen
-        }
+        onOpenChange={setDialogOpen}
       >
         <DialogContent className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -999,9 +1173,7 @@ const BarangMasuk = () => {
           </DialogHeader>
 
           <form
-            onSubmit={
-              handleSubmit
-            }
+            onSubmit={handleSubmit}
             className="space-y-5"
           >
             {/* TRANSACTION + INVOICE */}
@@ -1020,8 +1192,7 @@ const BarangMasuk = () => {
                     setFormData({
                       ...formData,
                       transaction_number:
-                        e.target
-                          .value,
+                        e.target.value,
                     })
                   }
                   required
@@ -1041,8 +1212,7 @@ const BarangMasuk = () => {
                     setFormData({
                       ...formData,
                       invoice_number:
-                        e.target
-                          .value,
+                        e.target.value,
                     })
                   }
                   placeholder="Invoice number"
@@ -1065,8 +1235,7 @@ const BarangMasuk = () => {
                   setFormData({
                     ...formData,
                     supplier_name:
-                      e.target
-                        .value,
+                      e.target.value,
                   })
                 }
                 placeholder="Supplier name"
@@ -1088,8 +1257,7 @@ const BarangMasuk = () => {
                   </p>
                 </div>
 
-                {dialogMode ===
-                  "add" && (
+                {dialogMode === "add" && (
                   <Button
                     type="button"
                     variant="outline"
@@ -1168,14 +1336,13 @@ const BarangMasuk = () => {
                             (p) => (
                               <SelectItem
                                 key={p.id}
-                                value={
-                                  p.id
-                                }
+                                value={p.id}
                               >
                                 {p.code} -{" "}
                                 {
                                   p.description
                                 }
+
                                 {p.qty !==
                                   undefined &&
                                   ` (Stock: ${p.qty})`}
@@ -1325,17 +1492,14 @@ const BarangMasuk = () => {
                 type="button"
                 variant="outline"
                 onClick={() =>
-                  setDialogOpen(
-                    false
-                  )
+                  setDialogOpen(false)
                 }
               >
                 Cancel
               </Button>
 
               <Button type="submit">
-                {dialogMode ===
-                "add"
+                {dialogMode === "add"
                   ? "Add Transaction"
                   : "Update Transaction"}
               </Button>
