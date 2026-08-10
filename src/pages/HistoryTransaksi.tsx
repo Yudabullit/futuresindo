@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
+
 import { Button } from "@/components/ui/button";
+
 import {
   Select,
   SelectContent,
@@ -9,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
 import {
   Table,
   TableHeader,
@@ -16,6 +19,7 @@ import {
   TableRow,
   TableCell,
 } from "@/components/ui/table";
+
 import {
   Pagination,
   PaginationContent,
@@ -24,62 +28,96 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
+
 import { Search } from "@/components/ui/search";
-import { Trash2, Download } from "lucide-react";
+
+import {
+  Trash2,
+  Download,
+  RefreshCw,
+} from "lucide-react";
+
 import { XlsxTable } from "@/components/ui/xlsx-table";
 
 interface HistoryRecord {
   id: string;
+
+  source_id: string;
+  source_table: "barang_masuk" | "penjualan";
+
   created_at: string;
-  transaction_number?: string;
-  invoice_number?: string;
-  transaction_type?: string;
+
+  transaction_number: string;
+  invoice_number: string;
+
+  transaction_type:
+    | "BARANG_MASUK"
+    | "PENJUALAN";
+
+  customer_name?: string;
+  supplier_name?: string;
+
   product_id?: string;
   product_name?: string;
   product_code?: string;
-  qty?: number;
-  price?: number;
-  total_price?: number;
+
+  qty: number;
+  price: number;
+  total_price: number;
+
   payment_method?: string;
+
   status?: string;
+  notes?: string;
+
   user_id?: string;
 }
 
-interface InvoiceMap {
-  [transactionNumber: string]: string;
-}
-
-interface GroupedHistory {
-  key: string;
-  transaction_number: string;
-  invoice_number: string;
-  records: HistoryRecord[];
-}
-
 const HistoryTransaksi = () => {
-  const [history, setHistory] = useState<HistoryRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<
+    HistoryRecord[]
+  >([]);
 
-  const [searchTerm, setSearchTerm] = useState("");
-  const [monthFilter, setMonthFilter] = useState("");
-  const [yearFilter, setYearFilter] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
-  const [productFilter, setProductFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [userFilter, setUserFilter] = useState("");
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState<string | null>(null);
+
+  const [searchTerm, setSearchTerm] =
+    useState("");
+
+  const [monthFilter, setMonthFilter] =
+    useState("");
+
+  const [yearFilter, setYearFilter] =
+    useState("");
+
+  const [typeFilter, setTypeFilter] =
+    useState("");
+
+  const [productFilter, setProductFilter] =
+    useState("");
+
+  const [statusFilter, setStatusFilter] =
+    useState("");
+
+  const [userFilter, setUserFilter] =
+    useState("");
 
   const [sortOrder, setSortOrder] =
     useState<"asc" | "desc">("desc");
 
-  const [page, setPage] = useState(1);
-  const [rowsPerPage] = useState(10);
+  const [page, setPage] =
+    useState(1);
 
-  const [products, setProducts] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
+  const rowsPerPage = 10;
 
-  const [invoiceMap, setInvoiceMap] =
-    useState<InvoiceMap>({});
+  const [products, setProducts] =
+    useState<any[]>([]);
+
+  const [users, setUsers] =
+    useState<any[]>([]);
 
   const { toast } = useToast();
 
@@ -105,250 +143,271 @@ const HistoryTransaksi = () => {
   );
 
   /*
-   * ============================================================
-   * FETCH INVOICE DARI BARANG MASUK + PENJUALAN
-   * ============================================================
+   * =========================================================
+   * FETCH HISTORY DARI BARANG MASUK + PENJUALAN
+   * =========================================================
    *
-   * Tujuannya:
+   * TIDAK lagi bergantung kepada transaction_history.
    *
-   * transaction_history
-   *       |
-   *       +---- barang_masuk
-   *       |
-   *       +---- penjualan
+   * Setiap row dari barang_masuk / penjualan akan menjadi
+   * satu row di History Transaksi.
    *
-   * Kalau invoice_number di history kosong,
-   * kita ambil invoice dari transaksi asal.
+   * Jadi:
    *
-   * ============================================================
-   */
-
-  const fetchInvoiceMap = async () => {
-    try {
-      const map: InvoiceMap = {};
-
-      /*
-       * BARANG MASUK
-       */
-
-      const {
-        data: barangMasuk,
-        error: barangMasukError,
-      } = await supabase
-        .from("barang_masuk")
-        .select(
-          "transaction_number, invoice_number"
-        );
-
-      if (!barangMasukError && barangMasuk) {
-        barangMasuk.forEach((item: any) => {
-          if (
-            item.transaction_number &&
-            item.invoice_number
-          ) {
-            map[item.transaction_number] =
-              item.invoice_number;
-          }
-        });
-      }
-
-      /*
-       * PENJUALAN
-       */
-
-      const {
-        data: penjualan,
-        error: penjualanError,
-      } = await supabase
-        .from("penjualan")
-        .select(
-          "transaction_number, invoice_number"
-        );
-
-      if (!penjualanError && penjualan) {
-        penjualan.forEach((item: any) => {
-          if (
-            item.transaction_number &&
-            item.invoice_number
-          ) {
-            map[item.transaction_number] =
-              item.invoice_number;
-          }
-        });
-      }
-
-      setInvoiceMap(map);
-    } catch (err) {
-      console.error(
-        "Failed to fetch invoice map:",
-        err
-      );
-    }
-  };
-
-  /*
-   * ============================================================
-   * FETCH HISTORY
-   * ============================================================
+   * Invoice INV-001
+   * Product A
+   * Product B
+   * Product C
+   *
+   * akan tampil 3 row.
    */
 
   const fetchHistory = async () => {
     try {
       setLoading(true);
-
-      let query = supabase
-        .from("transaction_history")
-        .select("*");
+      setError(null);
 
       /*
-       * SEARCH
+       * ============================
+       * BARANG MASUK
+       * ============================
        */
-
-      if (searchTerm) {
-        query = query.or(
-          `transaction_number.ilike.%${searchTerm}%,product_name.ilike.%${searchTerm}%,invoice_number.ilike.%${searchTerm}%`
-        );
-      }
-
-      /*
-       * MONTH
-       */
-
-      if (
-        monthFilter &&
-        monthFilter !== "ALL"
-      ) {
-        const monthNum =
-          months.indexOf(monthFilter) + 1;
-
-        const selectedYear =
-          yearFilter &&
-          yearFilter !== "ALL"
-            ? Number(yearFilter)
-            : new Date().getFullYear();
-
-        const startDate = new Date(
-          selectedYear,
-          monthNum - 1,
-          1
-        );
-
-        const endDate = new Date(
-          selectedYear,
-          monthNum,
-          1
-        );
-
-        query = query
-          .gte(
-            "created_at",
-            startDate.toISOString()
-          )
-          .lt(
-            "created_at",
-            endDate.toISOString()
-          );
-      }
-
-      /*
-       * YEAR
-       */
-
-      if (
-        yearFilter &&
-        yearFilter !== "ALL" &&
-        monthFilter === ""
-      ) {
-        const year = Number(yearFilter);
-
-        query = query
-          .gte(
-            "created_at",
-            `${year}-01-01`
-          )
-          .lt(
-            "created_at",
-            `${year + 1}-01-01`
-          );
-      }
-
-      /*
-       * TYPE
-       */
-
-      if (
-        typeFilter &&
-        typeFilter !== "ALL"
-      ) {
-        query = query.eq(
-          "transaction_type",
-          typeFilter
-        );
-      }
-
-      /*
-       * PRODUCT
-       */
-
-      if (
-        productFilter &&
-        productFilter !== "ALL"
-      ) {
-        query = query.eq(
-          "product_id",
-          productFilter
-        );
-      }
-
-      /*
-       * STATUS
-       */
-
-      if (
-        statusFilter &&
-        statusFilter !== "ALL"
-      ) {
-        query = query.eq(
-          "status",
-          statusFilter
-        );
-      }
-
-      /*
-       * USER
-       */
-
-      if (
-        userFilter &&
-        userFilter !== "ALL"
-      ) {
-        query = query.eq(
-          "user_id",
-          userFilter
-        );
-      }
-
-      /*
-       * SORT
-       */
-
-      query = query.order("created_at", {
-        ascending: sortOrder === "asc",
-      });
 
       const {
-        data,
-        error,
-      } = await query;
+        data: barangMasukData,
+        error: barangMasukError,
+      } = await supabase
+        .from("barang_masuk")
+        .select("*")
+        .order("created_at", {
+          ascending: false,
+        });
 
-      if (error) {
-        throw error;
+      if (barangMasukError) {
+        throw barangMasukError;
       }
 
-      setHistory(data || []);
-      setError(null);
+      /*
+       * ============================
+       * PENJUALAN
+       * ============================
+       */
+
+      const {
+        data: penjualanData,
+        error: penjualanError,
+      } = await supabase
+        .from("penjualan")
+        .select("*")
+        .order("created_at", {
+          ascending: false,
+        });
+
+      if (penjualanError) {
+        throw penjualanError;
+      }
+
+      /*
+       * ============================
+       * CONVERT BARANG MASUK
+       * ============================
+       */
+
+      const barangMasukHistory: HistoryRecord[] =
+        (barangMasukData || []).map(
+          (item: any) => ({
+            id: `barang_masuk-${item.id}`,
+
+            source_id: item.id,
+
+            source_table:
+              "barang_masuk",
+
+            created_at:
+              item.created_at ||
+              new Date().toISOString(),
+
+            transaction_number:
+              item.transaction_number ||
+              "",
+
+            invoice_number:
+              item.invoice_number ||
+              "",
+
+            transaction_type:
+              "BARANG_MASUK",
+
+            supplier_name:
+              item.supplier_name ||
+              "",
+
+            customer_name: "",
+
+            product_id:
+              item.product_id ||
+              "",
+
+            product_name:
+              item.product_name ||
+              "",
+
+            product_code:
+              item.product_code ||
+              "",
+
+            qty:
+              Number(item.qty) || 0,
+
+            price:
+              Number(item.price) || 0,
+
+            total_price:
+              Number(item.total_price) || 0,
+
+            payment_method:
+              item.payment_method ||
+              "",
+
+            status:
+              item.status ||
+              "",
+
+            notes:
+              item.notes ||
+              "",
+
+            user_id:
+              item.user_id ||
+              "",
+          })
+        );
+
+      /*
+       * ============================
+       * CONVERT PENJUALAN
+       * ============================
+       */
+
+      const penjualanHistory: HistoryRecord[] =
+        (penjualanData || []).map(
+          (item: any) => ({
+            id: `penjualan-${item.id}`,
+
+            source_id: item.id,
+
+            source_table:
+              "penjualan",
+
+            created_at:
+              item.created_at ||
+              new Date().toISOString(),
+
+            transaction_number:
+              item.transaction_number ||
+              "",
+
+            invoice_number:
+              item.invoice_number ||
+              "",
+
+            transaction_type:
+              "PENJUALAN",
+
+            customer_name:
+              item.customer_name ||
+              "",
+
+            supplier_name: "",
+
+            product_id:
+              item.product_id ||
+              "",
+
+            product_name:
+              item.product_name ||
+              "",
+
+            product_code:
+              item.product_code ||
+              "",
+
+            qty:
+              Number(item.qty) || 0,
+
+            price:
+              Number(item.price) || 0,
+
+            total_price:
+              Number(item.total_price) || 0,
+
+            payment_method:
+              item.payment_method ||
+              "",
+
+            status:
+              item.status ||
+              "",
+
+            notes:
+              item.notes ||
+              "",
+
+            user_id:
+              item.user_id ||
+              "",
+          })
+        );
+
+      /*
+       * ============================
+       * GABUNGKAN
+       * ============================
+       */
+
+      const combinedHistory = [
+        ...barangMasukHistory,
+        ...penjualanHistory,
+      ];
+
+      /*
+       * ============================
+       * SORT CREATED AT
+       * ============================
+       */
+
+      combinedHistory.sort(
+        (a, b) => {
+          const dateA =
+            new Date(
+              a.created_at
+            ).getTime();
+
+          const dateB =
+            new Date(
+              b.created_at
+            ).getTime();
+
+          return sortOrder === "asc"
+            ? dateA - dateB
+            : dateB - dateA;
+        }
+      );
+
+      setHistory(
+        combinedHistory
+      );
+
+      /*
+       * Kembali ke page 1 setelah refresh
+       */
+
+      setPage(1);
     } catch (err: any) {
-      console.error(err);
+      console.error(
+        "History error:",
+        err
+      );
 
       setError(
         err.message ||
@@ -362,271 +421,342 @@ const HistoryTransaksi = () => {
   };
 
   /*
-   * ============================================================
-   * INITIAL LOAD
-   * ============================================================
-   */
-
-  useEffect(() => {
-    fetchInvoiceMap();
-  }, []);
-
-  useEffect(() => {
-    fetchHistory();
-  }, [
-    searchTerm,
-    monthFilter,
-    yearFilter,
-    typeFilter,
-    productFilter,
-    statusFilter,
-    userFilter,
-    sortOrder,
-  ]);
-
-  /*
-   * ============================================================
+   * =========================================================
    * FETCH PRODUCTS
-   * ============================================================
+   * =========================================================
    */
 
   useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        const {
-          data,
-          error,
-        } = await supabase
-          .from("products")
-          .select("*");
+    const fetchProducts =
+      async () => {
+        try {
+          const {
+            data,
+            error,
+          } = await supabase
+            .from("products")
+            .select("*")
+            .order(
+              "description",
+              {
+                ascending: true,
+              }
+            );
 
-        if (error) {
-          throw error;
+          if (error) {
+            throw error;
+          }
+
+          setProducts(
+            data || []
+          );
+        } catch (err: any) {
+          console.error(
+            "Products error:",
+            err.message
+          );
         }
-
-        setProducts(data || []);
-      } catch (err: any) {
-        console.error(
-          "Failed to fetch products:",
-          err.message
-        );
-      }
-    };
+      };
 
     fetchProducts();
   }, []);
 
   /*
-   * ============================================================
+   * =========================================================
    * FETCH USERS
-   * ============================================================
+   * =========================================================
    */
 
   useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const {
-          data,
-          error,
-        } = await supabase
-          .from("users")
-          .select("*");
+    const fetchUsers =
+      async () => {
+        try {
+          const {
+            data,
+            error,
+          } = await supabase
+            .from("users")
+            .select("*");
 
-        if (error) {
-          throw error;
+          if (error) {
+            throw error;
+          }
+
+          setUsers(
+            data || []
+          );
+        } catch (err: any) {
+          console.error(
+            "Users error:",
+            err.message
+          );
         }
-
-        setUsers(data || []);
-      } catch (err: any) {
-        console.error(
-          "Failed to fetch users:",
-          err.message
-        );
-      }
-    };
+      };
 
     fetchUsers();
   }, []);
 
   /*
-   * ============================================================
-   * DELETE HISTORY
-   * ============================================================
+   * =========================================================
+   * INITIAL FETCH
+   * =========================================================
    */
 
-  const handleDeleteHistory = async (
-    id: string
-  ) => {
-    if (
-      !window.confirm(
-        "Are you sure you want to delete this history record?"
-      )
-    ) {
-      return;
-    }
+  useEffect(() => {
+    fetchHistory();
+  }, [sortOrder]);
 
-    try {
-      const {
-        error,
-      } = await supabase
-        .from("transaction_history")
-        .delete()
-        .eq("id", id);
+  /*
+   * =========================================================
+   * FILTER HISTORY
+   * =========================================================
+   */
 
-      if (error) {
-        throw error;
+  const filteredHistory =
+    useMemo(() => {
+      let result = [
+        ...history,
+      ];
+
+      /*
+       * SEARCH
+       */
+
+      if (searchTerm.trim()) {
+        const search =
+          searchTerm
+            .toLowerCase()
+            .trim();
+
+        result =
+          result.filter(
+            (record) =>
+              (
+                record.transaction_number ||
+                ""
+              )
+                .toLowerCase()
+                .includes(search) ||
+
+              (
+                record.invoice_number ||
+                ""
+              )
+                .toLowerCase()
+                .includes(search) ||
+
+              (
+                record.product_name ||
+                ""
+              )
+                .toLowerCase()
+                .includes(search) ||
+
+              (
+                record.product_code ||
+                ""
+              )
+                .toLowerCase()
+                .includes(search) ||
+
+              (
+                record.customer_name ||
+                ""
+              )
+                .toLowerCase()
+                .includes(search) ||
+
+              (
+                record.supplier_name ||
+                ""
+              )
+                .toLowerCase()
+                .includes(search)
+          );
       }
 
-      await fetchHistory();
+      /*
+       * MONTH
+       */
 
-      toast({
-        title: "Success",
-        description:
-          "History record deleted successfully",
-      });
-    } catch (err: any) {
-      toast({
-        title: "Error",
-        description:
-          err.message ||
-          "Failed to delete history record",
-        variant: "destructive",
-      });
-    }
-  };
+      if (
+        monthFilter &&
+        monthFilter !== "ALL"
+      ) {
+        const monthNumber =
+          months.indexOf(
+            monthFilter
+          );
 
-  /*
-   * ============================================================
-   * GET INVOICE
-   * ============================================================
-   *
-   * Prioritas:
-   *
-   * 1. invoice_number dari transaction_history
-   * 2. invoice_number dari barang_masuk / penjualan
-   * 3. "-"
-   *
-   * ============================================================
-   */
+        result =
+          result.filter(
+            (record) => {
+              const date =
+                new Date(
+                  record.created_at
+                );
 
-  const getInvoiceNumber = (
-    record: HistoryRecord
-  ) => {
-    if (
-      record.invoice_number &&
-      record.invoice_number.trim() !== ""
-    ) {
-      return record.invoice_number;
-    }
+              return (
+                date.getMonth() ===
+                monthNumber
+              );
+            }
+          );
+      }
 
-    if (
-      record.transaction_number &&
-      invoiceMap[record.transaction_number]
-    ) {
-      return invoiceMap[
-        record.transaction_number
-      ];
-    }
+      /*
+       * YEAR
+       */
 
-    return "-";
-  };
+      if (
+        yearFilter &&
+        yearFilter !== "ALL"
+      ) {
+        const yearNumber =
+          Number(
+            yearFilter
+          );
 
-  /*
-   * ============================================================
-   * GROUP TRANSACTIONS
-   * ============================================================
-   *
-   * INI BAGIAN UTAMA.
-   *
-   * Kalau:
-   *
-   * BM-001 + INV-001
-   *
-   * punya 3 produk:
-   *
-   * Product A
-   * Product B
-   * Product C
-   *
-   * Maka menjadi 1 GROUP.
-   *
-   * ============================================================
-   */
+        result =
+          result.filter(
+            (record) => {
+              const date =
+                new Date(
+                  record.created_at
+                );
 
-  const groupedHistory =
-    useMemo<GroupedHistory[]>(() => {
-      const groups: GroupedHistory[] = [];
+              return (
+                date.getFullYear() ===
+                yearNumber
+              );
+            }
+          );
+      }
 
-      const groupMap =
-        new Map<string, GroupedHistory>();
+      /*
+       * TYPE
+       */
 
-      history.forEach((record) => {
-        const transactionNumber =
-          record.transaction_number || "-";
+      if (
+        typeFilter &&
+        typeFilter !== "ALL"
+      ) {
+        result =
+          result.filter(
+            (record) =>
+              record.transaction_type ===
+              typeFilter
+          );
+      }
 
-        const invoiceNumber =
-          getInvoiceNumber(record);
+      /*
+       * PRODUCT
+       */
 
-        /*
-         * Group berdasarkan:
-         *
-         * transaction_number + invoice_number
-         */
+      if (
+        productFilter &&
+        productFilter !== "ALL"
+      ) {
+        result =
+          result.filter(
+            (record) =>
+              record.product_id ===
+              productFilter
+          );
+      }
 
-        const key =
-          `${transactionNumber}__${invoiceNumber}`;
+      /*
+       * STATUS
+       */
 
-        if (!groupMap.has(key)) {
-          const group: GroupedHistory = {
-            key,
-            transaction_number:
-              transactionNumber,
-            invoice_number:
-              invoiceNumber,
-            records: [],
-          };
+      if (
+        statusFilter &&
+        statusFilter !== "ALL"
+      ) {
+        result =
+          result.filter(
+            (record) =>
+              record.status ===
+              statusFilter
+          );
+      }
 
-          groupMap.set(key, group);
-          groups.push(group);
+      /*
+       * USER
+       */
+
+      if (
+        userFilter &&
+        userFilter !== "ALL"
+      ) {
+        result =
+          result.filter(
+            (record) =>
+              record.user_id ===
+              userFilter
+          );
+      }
+
+      /*
+       * SORT
+       */
+
+      result.sort(
+        (a, b) => {
+          const dateA =
+            new Date(
+              a.created_at
+            ).getTime();
+
+          const dateB =
+            new Date(
+              b.created_at
+            ).getTime();
+
+          return sortOrder === "asc"
+            ? dateA - dateB
+            : dateB - dateA;
         }
+      );
 
-        groupMap
-          .get(key)!
-          .records.push(record);
-      });
-
-      return groups;
-    }, [history, invoiceMap]);
+      return result;
+    }, [
+      history,
+      searchTerm,
+      monthFilter,
+      yearFilter,
+      typeFilter,
+      productFilter,
+      statusFilter,
+      userFilter,
+      sortOrder,
+    ]);
 
   /*
-   * ============================================================
+   * =========================================================
    * PAGINATION
-   * ============================================================
-   *
-   * Pagination sekarang berdasarkan ORDER,
-   * bukan berdasarkan jumlah product.
-   *
-   * Jadi 1 invoice = 1 order.
-   *
-   * ============================================================
+   * =========================================================
    */
 
   const totalPages =
     Math.ceil(
-      groupedHistory.length /
+      filteredHistory.length /
         rowsPerPage
     ) || 1;
 
-  const paginatedGroups =
-    groupedHistory.slice(
-      (page - 1) * rowsPerPage,
-      page * rowsPerPage
+  const paginatedHistory =
+    filteredHistory.slice(
+      (page - 1) *
+        rowsPerPage,
+
+      page *
+        rowsPerPage
     );
 
   /*
-   * ============================================================
-   * RESET PAGE
-   * ============================================================
+   * =========================================================
+   * RESET PAGE SAAT FILTER BERUBAH
+   * =========================================================
    */
 
   useEffect(() => {
@@ -642,114 +772,293 @@ const HistoryTransaksi = () => {
   ]);
 
   /*
-   * ============================================================
-   * EXPORT DATA
-   * ============================================================
+   * =========================================================
+   * DELETE
+   * =========================================================
    *
-   * Export tetap semua PRODUCT.
-   * Tidak digabung menjadi satu baris.
+   * Karena History sekarang berasal langsung dari
+   * barang_masuk / penjualan, delete akan menghapus
+   * row sumbernya.
    *
-   * ============================================================
+   * Ini membuat History benar-benar sinkron.
    */
 
-  const exportHistory =
-    useMemo(() => {
-      return history.map((record) => ({
-        ...record,
-        invoice_number:
-          getInvoiceNumber(record),
-      }));
-    }, [history, invoiceMap]);
+  const handleDeleteHistory =
+    async (
+      record: HistoryRecord
+    ) => {
+      if (
+        !window.confirm(
+          `Are you sure you want to delete this ${
+            record.transaction_type ===
+            "BARANG_MASUK"
+              ? "barang masuk"
+              : "penjualan"
+          } record?`
+        )
+      ) {
+        return;
+      }
+
+      try {
+        const table =
+          record.source_table;
+
+        const {
+          error,
+        } = await supabase
+          .from(table)
+          .delete()
+          .eq(
+            "id",
+            record.source_id
+          );
+
+        if (error) {
+          throw error;
+        }
+
+        await fetchHistory();
+
+        toast({
+          title:
+            "Success",
+
+          description:
+            "Transaction record deleted successfully",
+        });
+      } catch (err: any) {
+        console.error(err);
+
+        toast({
+          title:
+            "Error",
+
+          description:
+            err.message ||
+            "Failed to delete transaction record",
+
+          variant:
+            "destructive",
+        });
+      }
+    };
 
   /*
-   * ============================================================
+   * =========================================================
+   * FORMAT CURRENCY
+   * =========================================================
+   */
+
+  const formatCurrency = (
+    value: number
+  ) => {
+    return `Rp ${Number(
+      value || 0
+    ).toLocaleString(
+      "id-ID"
+    )}`;
+  };
+
+  /*
+   * =========================================================
+   * FORMAT DATE
+   * =========================================================
+   */
+
+  const formatDate = (
+    value?: string
+  ) => {
+    if (!value) {
+      return "-";
+    }
+
+    return new Date(
+      value
+    ).toLocaleDateString(
+      "id-ID"
+    );
+  };
+
+  /*
+   * =========================================================
+   * FORMAT TIME
+   * =========================================================
+   */
+
+  const formatTime = (
+    value?: string
+  ) => {
+    if (!value) {
+      return "-";
+    }
+
+    return new Date(
+      value
+    ).toLocaleTimeString(
+      "id-ID"
+    );
+  };
+
+  /*
+   * =========================================================
    * UI
-   * ============================================================
+   * =========================================================
    */
 
   return (
     <div className="space-y-6">
+
+      {/* ================================================= */}
       {/* HEADER */}
+      {/* ================================================= */}
 
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">
-            History Transaksi
-          </h1>
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
 
-          <p className="text-sm text-muted-foreground mt-1">
-            Semua transaksi berdasarkan
-            nomor transaksi dan invoice
-          </p>
-        </div>
+        <h1 className="text-2xl font-bold">
+          History Transaksi
+        </h1>
 
-        <XlsxTable
-          data={exportHistory}
-          columns={[
-            {
-              header: "Date",
-              key: "created_at",
-            },
-            {
-              header: "Transaction Number",
-              key: "transaction_number",
-            },
-            {
-              header: "Invoice",
-              key: "invoice_number",
-            },
-            {
-              header: "Transaction Type",
-              key: "transaction_type",
-            },
-            {
-              header: "Product",
-              key: "product_name",
-            },
-            {
-              header: "Code",
-              key: "product_code",
-            },
-            {
-              header: "Qty",
-              key: "qty",
-            },
-            {
-              header: "Price",
-              key: "price",
-            },
-            {
-              header: "Total Price",
-              key: "total_price",
-            },
-            {
-              header: "Payment",
-              key: "payment_method",
-            },
-            {
-              header: "Status",
-              key: "status",
-            },
-          ]}
-          filename="history-transaksi.xlsx"
-          className="flex items-center"
-        >
+        <div className="flex flex-wrap gap-3 mt-4 lg:mt-0">
+
+          {/* REFRESH */}
+
           <Button
             variant="outline"
             size="sm"
-            className="px-3"
+            onClick={() =>
+              fetchHistory()
+            }
           >
-            <Download className="mr-2 h-4 w-4" />
-            Export
+            <RefreshCw className="mr-2 h-4 w-4" />
+
+            Refresh
           </Button>
-        </XlsxTable>
+
+          {/* EXPORT */}
+
+          <XlsxTable
+            data={
+              filteredHistory
+            }
+            columns={[
+              {
+                header:
+                  "Date",
+                key:
+                  "created_at",
+              },
+
+              {
+                header:
+                  "Transaction Number",
+                key:
+                  "transaction_number",
+              },
+
+              {
+                header:
+                  "Invoice",
+                key:
+                  "invoice_number",
+              },
+
+              {
+                header:
+                  "Transaction Type",
+                key:
+                  "transaction_type",
+              },
+
+              {
+                header:
+                  "Supplier",
+                key:
+                  "supplier_name",
+              },
+
+              {
+                header:
+                  "Customer",
+                key:
+                  "customer_name",
+              },
+
+              {
+                header:
+                  "Product",
+                key:
+                  "product_name",
+              },
+
+              {
+                header:
+                  "Code",
+                key:
+                  "product_code",
+              },
+
+              {
+                header:
+                  "Qty",
+                key:
+                  "qty",
+              },
+
+              {
+                header:
+                  "Price",
+                key:
+                  "price",
+              },
+
+              {
+                header:
+                  "Total Price",
+                key:
+                  "total_price",
+              },
+
+              {
+                header:
+                  "Payment",
+                key:
+                  "payment_method",
+              },
+
+              {
+                header:
+                  "Status",
+                key:
+                  "status",
+              },
+            ]}
+            filename="history-transaksi.xlsx"
+            className="flex items-center"
+          >
+            <Button
+              variant="outline"
+              size="sm"
+              className="px-3"
+            >
+              <Download className="mr-2 h-4 w-4" />
+
+              Export
+            </Button>
+          </XlsxTable>
+        </div>
       </div>
 
-      {/* FILTER BAR 1 */}
+      {/* ================================================= */}
+      {/* SEARCH */}
+      {/* ================================================= */}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+
         <Search
-          value={searchTerm}
+          value={
+            searchTerm
+          }
           onChange={(e) =>
             setSearchTerm(
               e.target.value
@@ -759,65 +1068,95 @@ const HistoryTransaksi = () => {
           className="w-full"
         />
 
+        {/* MONTH */}
+
         <Select
-          value={monthFilter}
-          onValueChange={setMonthFilter}
+          value={
+            monthFilter
+          }
+          onValueChange={
+            setMonthFilter
+          }
         >
           <SelectTrigger className="w-full">
             <SelectValue placeholder="Month" />
           </SelectTrigger>
 
           <SelectContent>
+
             <SelectItem value="ALL">
               All Months
             </SelectItem>
 
             {months.map(
-              (month, i) => (
+              (
+                month,
+                index
+              ) => (
                 <SelectItem
-                  key={i}
+                  key={index}
                   value={month}
                 >
                   {month}
                 </SelectItem>
               )
             )}
+
           </SelectContent>
         </Select>
 
+        {/* YEAR */}
+
         <Select
-          value={yearFilter}
-          onValueChange={setYearFilter}
+          value={
+            yearFilter
+          }
+          onValueChange={
+            setYearFilter
+          }
         >
           <SelectTrigger className="w-full">
             <SelectValue placeholder="Year" />
           </SelectTrigger>
 
           <SelectContent>
+
             <SelectItem value="ALL">
               All Years
             </SelectItem>
 
-            {years.map((year) => (
-              <SelectItem
-                key={year}
-                value={String(year)}
-              >
-                {year}
-              </SelectItem>
-            ))}
+            {years.map(
+              (year) => (
+                <SelectItem
+                  key={year}
+                  value={String(
+                    year
+                  )}
+                >
+                  {year}
+                </SelectItem>
+              )
+            )}
+
           </SelectContent>
         </Select>
 
+        {/* TYPE */}
+
         <Select
-          value={typeFilter}
-          onValueChange={setTypeFilter}
+          value={
+            typeFilter
+          }
+          onValueChange={
+            setTypeFilter
+          }
         >
           <SelectTrigger className="w-full">
             <SelectValue placeholder="Transaction Type" />
           </SelectTrigger>
 
           <SelectContent>
+
             <SelectItem value="ALL">
               All Types
             </SelectItem>
@@ -829,48 +1168,79 @@ const HistoryTransaksi = () => {
             <SelectItem value="PENJUALAN">
               Penjualan
             </SelectItem>
+
           </SelectContent>
         </Select>
+
       </div>
 
-      {/* FILTER BAR 2 */}
+      {/* ================================================= */}
+      {/* FILTER BARIS KEDUA */}
+      {/* ================================================= */}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+
+        {/* PRODUCT */}
+
         <Select
-          value={productFilter}
-          onValueChange={setProductFilter}
+          value={
+            productFilter
+          }
+          onValueChange={
+            setProductFilter
+          }
         >
           <SelectTrigger className="w-full">
             <SelectValue placeholder="Product" />
           </SelectTrigger>
 
           <SelectContent>
+
             <SelectItem value="ALL">
               All Products
             </SelectItem>
 
             {products.map(
-              (product) => (
+              (
+                product
+              ) => (
                 <SelectItem
-                  key={product.id}
-                  value={product.id}
+                  key={
+                    product.id
+                  }
+                  value={
+                    product.id
+                  }
                 >
-                  {product.description}
+                  {product.code
+                    ? `${product.code} - `
+                    : ""}
+                  {
+                    product.description
+                  }
                 </SelectItem>
               )
             )}
+
           </SelectContent>
         </Select>
 
+        {/* STATUS */}
+
         <Select
-          value={statusFilter}
-          onValueChange={setStatusFilter}
+          value={
+            statusFilter
+          }
+          onValueChange={
+            setStatusFilter
+          }
         >
           <SelectTrigger className="w-full">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
 
           <SelectContent>
+
             <SelectItem value="ALL">
               All Status
             </SelectItem>
@@ -898,82 +1268,131 @@ const HistoryTransaksi = () => {
             <SelectItem value="Received">
               Received
             </SelectItem>
+
           </SelectContent>
         </Select>
 
+        {/* USER */}
+
         <Select
-          value={userFilter}
-          onValueChange={setUserFilter}
+          value={
+            userFilter
+          }
+          onValueChange={
+            setUserFilter
+          }
         >
           <SelectTrigger className="w-full">
             <SelectValue placeholder="User" />
           </SelectTrigger>
 
           <SelectContent>
+
             <SelectItem value="ALL">
               All Users
             </SelectItem>
 
             {users.map(
-              (user) => (
+              (
+                user
+              ) => (
                 <SelectItem
-                  key={user.id}
-                  value={user.id}
+                  key={
+                    user.id
+                  }
+                  value={
+                    user.id
+                  }
                 >
-                  {user.username}
+                  {
+                    user.username
+                  }
                 </SelectItem>
               )
             )}
+
           </SelectContent>
         </Select>
 
+        {/* SORT */}
+
         <div className="flex items-center justify-end">
+
           <Button
             variant="outline"
             size="sm"
             onClick={() =>
               setSortOrder(
-                sortOrder === "asc"
+                sortOrder ===
+                  "asc"
                   ? "desc"
                   : "asc"
               )
             }
           >
             Sort: Date{" "}
-            {sortOrder === "asc"
+            {sortOrder ===
+            "asc"
               ? "↑"
               : "↓"}
           </Button>
+
         </div>
+
       </div>
 
+      {/* ================================================= */}
       {/* ERROR */}
+      {/* ================================================= */}
 
       {error && (
         <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded">
-          <p>{error}</p>
+
+          <p>
+            {error}
+          </p>
+
         </div>
       )}
 
+      {/* ================================================= */}
+      {/* LOADING */}
+      {/* ================================================= */}
+
+      {loading && (
+        <div className="text-center py-10 text-gray-500">
+          Loading transaction history...
+        </div>
+      )}
+
+      {/* ================================================= */}
       {/* EMPTY */}
+      {/* ================================================= */}
 
       {!loading &&
-        groupedHistory.length === 0 && (
+        filteredHistory.length ===
+          0 && (
           <div className="text-center py-10 text-gray-500">
             No history records found
           </div>
         )}
 
-      {/* ======================================================
-          TABLE
-          ====================================================== */}
+      {/* ================================================= */}
+      {/* TABLE */}
+      {/* ================================================= */}
 
       {!loading &&
-        groupedHistory.length > 0 && (
-          <div className="w-full overflow-x-auto">
+        filteredHistory.length >
+          0 && (
+
+          <div className="overflow-x-auto">
+
             <Table>
+
               <TableHeader>
+
                 <TableRow>
+
                   <TableCell className="font-semibold">
                     Date
                   </TableCell>
@@ -995,6 +1414,10 @@ const HistoryTransaksi = () => {
                   </TableCell>
 
                   <TableCell className="font-semibold">
+                    Supplier / Customer
+                  </TableCell>
+
+                  <TableCell className="font-semibold">
                     Product
                   </TableCell>
 
@@ -1004,6 +1427,10 @@ const HistoryTransaksi = () => {
 
                   <TableCell className="text-right font-semibold">
                     Qty
+                  </TableCell>
+
+                  <TableCell className="text-right font-semibold">
+                    Price
                   </TableCell>
 
                   <TableCell className="text-right font-semibold">
@@ -1021,289 +1448,308 @@ const HistoryTransaksi = () => {
                   <TableCell className="text-center font-semibold">
                     Actions
                   </TableCell>
+
                 </TableRow>
+
               </TableHeader>
 
               <TableBody>
-                {paginatedGroups.map(
-                  (group) => {
-                    const firstRecord =
-                      group.records[0];
 
-                    return group.records.map(
-                      (
-                        record,
-                        recordIndex
-                      ) => (
-                        <TableRow
-                          key={
-                            record.id
-                          }
+                {paginatedHistory.map(
+                  (
+                    record
+                  ) => (
+
+                    <TableRow
+                      key={
+                        record.id
+                      }
+                    >
+
+                      {/* DATE */}
+
+                      <TableCell>
+                        {formatDate(
+                          record.created_at
+                        )}
+                      </TableCell>
+
+                      {/* TIME */}
+
+                      <TableCell>
+                        {formatTime(
+                          record.created_at
+                        )}
+                      </TableCell>
+
+                      {/* TRANSACTION */}
+
+                      <TableCell className="font-medium">
+                        {
+                          record.transaction_number ||
+                          "-"
+                        }
+                      </TableCell>
+
+                      {/* INVOICE */}
+
+                      <TableCell className="font-medium">
+                        {
+                          record.invoice_number ||
+                          "-"
+                        }
+                      </TableCell>
+
+                      {/* TYPE */}
+
+                      <TableCell>
+
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            record.transaction_type ===
+                            "BARANG_MASUK"
+                              ? "bg-blue-100 text-blue-800"
+                              : "bg-green-100 text-green-800"
+                          }`}
                         >
-                          {/* DATE */}
 
-                          <TableCell>
-                            {new Date(
-                              record.created_at
-                            ).toLocaleDateString(
-                              "id-ID"
-                            )}
-                          </TableCell>
+                          {record.transaction_type ===
+                          "BARANG_MASUK"
+                            ? "BARANG MASUK"
+                            : "PENJUALAN"}
 
-                          {/* TIME */}
+                        </span>
 
-                          <TableCell>
-                            {new Date(
-                              record.created_at
-                            ).toLocaleTimeString(
-                              "id-ID"
-                            )}
-                          </TableCell>
+                      </TableCell>
 
-                          {/* TRANSACTION NUMBER
-                              hanya tampil sekali
-                          */}
+                      {/* SUPPLIER / CUSTOMER */}
 
-                          {recordIndex ===
-                            0 && (
-                            <TableCell
-                              rowSpan={
-                                group
-                                  .records
-                                  .length
-                              }
-                              className="font-semibold align-top bg-muted/20"
-                            >
-                              {
-                                group.transaction_number
-                              }
-                            </TableCell>
-                          )}
+                      <TableCell>
 
-                          {/* INVOICE
-                              hanya tampil sekali
-                          */}
+                        {record.transaction_type ===
+                        "BARANG_MASUK"
+                          ? record.supplier_name ||
+                            "-"
+                          : record.customer_name ||
+                            "-"}
 
-                          {recordIndex ===
-                            0 && (
-                            <TableCell
-                              rowSpan={
-                                group
-                                  .records
-                                  .length
-                              }
-                              className="font-semibold align-top bg-muted/20"
-                            >
-                              {group.invoice_number ===
-                              "-" ? (
-                                <span className="text-muted-foreground">
-                                  -
-                                </span>
-                              ) : (
-                                group.invoice_number
-                              )}
-                            </TableCell>
-                          )}
+                      </TableCell>
 
-                          {/* TYPE */}
+                      {/* PRODUCT */}
 
-                          {recordIndex ===
-                            0 && (
-                            <TableCell
-                              rowSpan={
-                                group
-                                  .records
-                                  .length
-                              }
-                              className="align-top"
-                            >
-                              <span
-                                className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                  firstRecord.transaction_type ===
-                                  "BARANG_MASUK"
-                                    ? "bg-blue-100 text-blue-800"
-                                    : "bg-green-100 text-green-800"
-                                }`}
-                              >
-                                {firstRecord.transaction_type ===
-                                "BARANG_MASUK"
-                                  ? "BARANG MASUK"
-                                  : "PENJUALAN"}
-                              </span>
-                            </TableCell>
-                          )}
+                      <TableCell>
+                        {
+                          record.product_name ||
+                          "-"
+                        }
+                      </TableCell>
 
-                          {/* PRODUCT */}
+                      {/* CODE */}
 
-                          <TableCell>
-                            {record.product_name ||
-                              "-"}
-                          </TableCell>
+                      <TableCell>
+                        {
+                          record.product_code ||
+                          "-"
+                        }
+                      </TableCell>
 
-                          {/* CODE */}
+                      {/* QTY */}
 
-                          <TableCell>
-                            {record.product_code ||
-                              "-"}
-                          </TableCell>
+                      <TableCell className="text-right">
+                        {Number(
+                          record.qty ||
+                            0
+                        ).toLocaleString(
+                          "id-ID"
+                        )}
+                      </TableCell>
 
-                          {/* QTY */}
+                      {/* PRICE */}
 
-                          <TableCell className="text-right">
-                            {Number(
-                              record.qty ||
-                                0
-                            ).toLocaleString(
-                              "id-ID"
-                            )}
-                          </TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(
+                          record.price
+                        )}
+                      </TableCell>
 
-                          {/* TOTAL PRICE */}
+                      {/* TOTAL */}
 
-                          <TableCell className="text-right">
-                            Rp{" "}
-                            {Number(
-                              record.total_price ||
-                                0
-                            ).toLocaleString(
-                              "id-ID"
-                            )}
-                          </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatCurrency(
+                          record.total_price
+                        )}
+                      </TableCell>
 
-                          {/* PAYMENT */}
+                      {/* PAYMENT */}
 
-                          {recordIndex ===
-                            0 && (
-                            <TableCell
-                              rowSpan={
-                                group
-                                  .records
-                                  .length
-                              }
-                              className="align-top"
-                            >
-                              {firstRecord.payment_method ||
-                                "-"}
-                            </TableCell>
-                          )}
+                      <TableCell>
+                        {
+                          record.payment_method ||
+                          "-"
+                        }
+                      </TableCell>
 
-                          {/* STATUS */}
+                      {/* STATUS */}
 
-                          {recordIndex ===
-                            0 && (
-                            <TableCell
-                              rowSpan={
-                                group
-                                  .records
-                                  .length
-                              }
-                              className="align-top"
-                            >
-                              <span
-                                className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                  firstRecord.status ===
-                                  "Barang Diterima"
-                                    ? "bg-green-100 text-green-800"
-                                    : firstRecord.status ===
-                                      "Tidak Diterima"
-                                    ? "bg-red-100 text-red-800"
-                                    : firstRecord.status ===
-                                      "Prepared"
-                                    ? "bg-yellow-100 text-yellow-800"
-                                    : firstRecord.status ===
-                                      "Sent"
-                                    ? "bg-blue-100 text-blue-800"
-                                    : firstRecord.status ===
-                                      "Received"
-                                    ? "bg-green-100 text-green-800"
-                                    : "bg-gray-100 text-gray-800"
-                                }`}
-                              >
-                                {firstRecord.status ||
-                                  "-"}
-                              </span>
-                            </TableCell>
-                          )}
+                      <TableCell>
 
-                          {/* ACTION */}
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            record.status ===
+                            "Barang Diterima"
+                              ? "bg-green-100 text-green-800"
+                              : record.status ===
+                                "Received"
+                              ? "bg-green-100 text-green-800"
+                              : record.status ===
+                                "Tidak Diterima"
+                              ? "bg-red-100 text-red-800"
+                              : record.status ===
+                                "Sent"
+                              ? "bg-blue-100 text-blue-800"
+                              : record.status ===
+                                "Prepared"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : "bg-gray-100 text-gray-800"
+                          }`}
+                        >
 
-                          <TableCell className="text-center">
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() =>
-                                handleDeleteHistory(
-                                  record.id
-                                )
-                              }
-                              className="px-3"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    );
-                  }
+                          {
+                            record.status ||
+                            "-"
+                          }
+
+                        </span>
+
+                      </TableCell>
+
+                      {/* ACTION */}
+
+                      <TableCell className="text-center">
+
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() =>
+                            handleDeleteHistory(
+                              record
+                            )
+                          }
+                          className="px-3"
+                        >
+
+                          <Trash2 className="h-4 w-4" />
+
+                        </Button>
+
+                      </TableCell>
+
+                    </TableRow>
+
+                  )
                 )}
+
               </TableBody>
+
             </Table>
+
           </div>
         )}
 
+      {/* ================================================= */}
       {/* PAGINATION */}
+      {/* ================================================= */}
 
       {!loading &&
-        groupedHistory.length > 0 && (
+        filteredHistory.length >
+          0 && (
+
           <Pagination>
+
             <PaginationContent>
+
               <PaginationItem>
+
                 <PaginationPrevious
                   onClick={() =>
-                    setPage((p) =>
-                      Math.max(
-                        p - 1,
-                        1
-                      )
+                    setPage(
+                      (p) =>
+                        Math.max(
+                          p -
+                            1,
+                          1
+                        )
                     )
                   }
                 />
+
               </PaginationItem>
 
-              {Array.from({
-                length: totalPages,
-              }).map((_, i) => (
-                <PaginationItem
-                  key={i}
-                >
-                  <PaginationLink
-                    isActive={
-                      i + 1 === page
-                    }
-                    onClick={() =>
-                      setPage(i + 1)
-                    }
-                  >
-                    {i + 1}
-                  </PaginationLink>
-                </PaginationItem>
-              ))}
+              {Array.from(
+                {
+                  length:
+                    totalPages,
+                }
+              ).map(
+                (
+                  _,
+                  index
+                ) => {
+
+                  const pageNumber =
+                    index +
+                    1;
+
+                  return (
+                    <PaginationItem
+                      key={
+                        pageNumber
+                      }
+                    >
+
+                      <PaginationLink
+                        isActive={
+                          pageNumber ===
+                          page
+                        }
+                        onClick={() =>
+                          setPage(
+                            pageNumber
+                          )
+                        }
+                      >
+                        {
+                          pageNumber
+                        }
+                      </PaginationLink>
+
+                    </PaginationItem>
+                  );
+                }
+              )}
 
               <PaginationItem>
+
                 <PaginationNext
                   onClick={() =>
-                    setPage((p) =>
-                      Math.min(
-                        p + 1,
-                        totalPages
-                      )
+                    setPage(
+                      (p) =>
+                        Math.min(
+                          p +
+                            1,
+                          totalPages
+                        )
                     )
                   }
                 />
+
               </PaginationItem>
+
             </PaginationContent>
+
           </Pagination>
         )}
+
     </div>
   );
 };
