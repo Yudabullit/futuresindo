@@ -50,7 +50,7 @@ const Penjualan = () => {
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
-    transaction_number: "INV-",
+    transaction_number: "",
     customer_name: "",
     invoice_number: "",
     product_id: "",
@@ -140,10 +140,9 @@ const Penjualan = () => {
 
   const handleAddTransaction = () => {
     setDialogMode("add");
-    setEditingId(null);
 
     setFormData({
-      transaction_number: "INV-",
+      transaction_number: `PJ-${Date.now().toString().slice(-6)}`,
       customer_name: "",
       invoice_number: "",
       product_id: "",
@@ -164,7 +163,7 @@ const Penjualan = () => {
     setDialogMode("edit");
 
     setFormData({
-      transaction_number: transaction.transaction_number || "INV-",
+      transaction_number: transaction.transaction_number,
       customer_name: transaction.customer_name || "",
       invoice_number: transaction.invoice_number || "",
       product_id: transaction.product_id || "",
@@ -191,14 +190,6 @@ const Penjualan = () => {
       return;
 
     try {
-      const { data: transaction, error: fetchError } = await supabase
-        .from("penjualan")
-        .select("*")
-        .eq("id", id)
-        .single();
-
-      if (fetchError) throw fetchError;
-
       const { error } = await supabase
         .from("penjualan")
         .delete()
@@ -206,35 +197,7 @@ const Penjualan = () => {
 
       if (error) throw error;
 
-      // Kembalikan stok ketika transaksi penjualan dihapus
-      if (transaction?.product_id && transaction?.qty) {
-        const { data: product, error: productError } = await supabase
-          .from("products")
-          .select("qty")
-          .eq("id", transaction.product_id)
-          .single();
-
-        if (!productError && product) {
-          const currentStock = Number(product.qty || 0);
-          const returnedStock =
-            currentStock + Number(transaction.qty || 0);
-
-          await supabase
-            .from("products")
-            .update({
-              qty: returnedStock,
-            })
-            .eq("id", transaction.product_id);
-        }
-      }
-
       await fetchTransactions();
-
-      const { data: refreshedProducts } = await supabase
-        .from("products")
-        .select("*");
-
-      setProducts(refreshedProducts || []);
 
       toast({
         title: "Success",
@@ -254,102 +217,25 @@ const Penjualan = () => {
     e.preventDefault();
 
     try {
-      // Pastikan nomor transaksi selalu diawali INV-
-      let transactionNumber = formData.transaction_number.trim();
-
-      if (!transactionNumber.startsWith("INV-")) {
-        transactionNumber = `INV-${transactionNumber}`;
-      }
-
-      if (transactionNumber === "INV-") {
-        toast({
-          title: "Error",
-          description:
-            "Silakan masukkan nomor transaksi setelah INV-",
-          variant: "destructive",
-        });
-        return;
-      }
-
       const totalPrice = formData.qty * formData.price;
 
       const payload = {
         ...formData,
-        transaction_number: transactionNumber,
         total_price: totalPrice,
       };
 
       if (dialogMode === "add") {
-        // Cek produk
-        const { data: product, error: productError } = await supabase
-          .from("products")
-          .select("qty")
-          .eq("id", formData.product_id)
-          .single();
-
-        if (productError) throw productError;
-
-        if (!product) {
-          throw new Error("Product not found");
-        }
-
-        const currentStock = Number(product.qty || 0);
-        const requestedQty = Number(formData.qty || 0);
-
-        if (requestedQty <= 0) {
-          toast({
-            title: "Error",
-            description: "Qty harus lebih dari 0",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        if (currentStock < requestedQty) {
-          toast({
-            title: "Stock Tidak Cukup",
-            description: `Stock tersedia hanya ${currentStock}`,
-            variant: "destructive",
-          });
-          return;
-        }
-
-        // Insert transaksi
         const { error } = await supabase
           .from("penjualan")
           .insert(payload);
 
         if (error) throw error;
 
-        // Kurangi stok produk
-        const newStock = currentStock - requestedQty;
-
-        const { error: stockError } = await supabase
-          .from("products")
-          .update({
-            qty: newStock,
-          })
-          .eq("id", formData.product_id);
-
-        if (stockError) throw stockError;
-
         toast({
           title: "Success",
-          description:
-            "Transaction added and product stock updated successfully",
+          description: "Transaction added successfully",
         });
       } else if (editingId) {
-        // Ambil transaksi lama
-        const { data: oldTransaction, error: oldTransactionError } =
-          await supabase
-            .from("penjualan")
-            .select("*")
-            .eq("id", editingId)
-            .single();
-
-        if (oldTransactionError) throw oldTransactionError;
-
-        // Update transaksi
         const { error } = await supabase
           .from("penjualan")
           .update(payload)
@@ -357,132 +243,14 @@ const Penjualan = () => {
 
         if (error) throw error;
 
-        // Jika produk atau qty berubah,
-        // kembalikan stok transaksi lama terlebih dahulu
-        if (oldTransaction) {
-          const oldProductId = oldTransaction.product_id;
-          const oldQty = Number(oldTransaction.qty || 0);
-          const newProductId = formData.product_id;
-          const newQty = Number(formData.qty || 0);
-
-          // Produk sama
-          if (oldProductId === newProductId) {
-            const { data: product, error: productError } = await supabase
-              .from("products")
-              .select("qty")
-              .eq("id", newProductId)
-              .single();
-
-            if (productError) throw productError;
-
-            if (product) {
-              const currentStock = Number(product.qty || 0);
-
-              // Kembalikan qty lama, kemudian kurangi qty baru
-              const stockAfterReturn =
-                currentStock + oldQty;
-
-              if (stockAfterReturn < newQty) {
-                throw new Error(
-                  `Stock tidak cukup. Stock tersedia ${stockAfterReturn}`
-                );
-              }
-
-              const finalStock =
-                stockAfterReturn - newQty;
-
-              const { error: stockError } = await supabase
-                .from("products")
-                .update({
-                  qty: finalStock,
-                })
-                .eq("id", newProductId);
-
-              if (stockError) throw stockError;
-            }
-          } else {
-            // Jika produk berbeda:
-            // kembalikan stok produk lama
-            if (oldProductId && oldQty > 0) {
-              const { data: oldProduct, error: oldProductError } =
-                await supabase
-                  .from("products")
-                  .select("qty")
-                  .eq("id", oldProductId)
-                  .single();
-
-              if (oldProductError) throw oldProductError;
-
-              if (oldProduct) {
-                const restoredStock =
-                  Number(oldProduct.qty || 0) + oldQty;
-
-                const { error: restoreError } = await supabase
-                  .from("products")
-                  .update({
-                    qty: restoredStock,
-                  })
-                  .eq("id", oldProductId);
-
-                if (restoreError) throw restoreError;
-              }
-            }
-
-            // Kurangi stok produk baru
-            if (newProductId && newQty > 0) {
-              const { data: newProduct, error: newProductError } =
-                await supabase
-                  .from("products")
-                  .select("qty")
-                  .eq("id", newProductId)
-                  .single();
-
-              if (newProductError) throw newProductError;
-
-              if (newProduct) {
-                const currentNewStock =
-                  Number(newProduct.qty || 0);
-
-                if (currentNewStock < newQty) {
-                  throw new Error(
-                    `Stock produk baru tidak cukup. Stock tersedia ${currentNewStock}`
-                  );
-                }
-
-                const finalNewStock =
-                  currentNewStock - newQty;
-
-                const { error: newStockError } =
-                  await supabase
-                    .from("products")
-                    .update({
-                      qty: finalNewStock,
-                    })
-                    .eq("id", newProductId);
-
-                if (newStockError) throw newStockError;
-              }
-            }
-          }
-        }
-
         toast({
           title: "Success",
-          description:
-            "Transaction updated successfully",
+          description: "Transaction updated successfully",
         });
       }
 
       setDialogOpen(false);
-
       await fetchTransactions();
-
-      // Refresh product stock
-      const { data: refreshedProducts } = await supabase
-        .from("products")
-        .select("*");
-
-      setProducts(refreshedProducts || []);
     } catch (err: any) {
       toast({
         title: "Error",
@@ -492,6 +260,12 @@ const Penjualan = () => {
       });
     }
   };
+
+  // ============================================
+  // TANGGAL
+  // HANYA MENAMBAHKAN FORMAT TANGGAL
+  // DARI created_at
+  // ============================================
 
   const formatDate = (
     date: string | null | undefined
@@ -529,7 +303,6 @@ const Penjualan = () => {
         </div>
 
         <div className="flex flex-wrap gap-3 mt-4 lg:mt-0">
-
           <Button
             onClick={handleAddTransaction}
             className="flex items-center"
@@ -594,7 +367,6 @@ const Penjualan = () => {
               Export
             </Button>
           </XlsxTable>
-
         </div>
       </div>
 
@@ -623,10 +395,8 @@ const Penjualan = () => {
 
       {!loading && transactions.length > 0 && (
         <Table>
-
           <TableHeader>
             <TableRow>
-
               <TableCell className="font-semibold">
                 Transaction No
               </TableCell>
@@ -639,6 +409,7 @@ const Penjualan = () => {
                 Invoice
               </TableCell>
 
+              {/* TANGGAL */}
               <TableCell className="font-semibold">
                 Tanggal
               </TableCell>
@@ -670,12 +441,10 @@ const Penjualan = () => {
               <TableCell className="text-center font-semibold">
                 Actions
               </TableCell>
-
             </TableRow>
           </TableHeader>
 
           <TableBody>
-
             {paginatedTransactions.map(
               (transaction) => (
                 <TableRow key={transaction.id}>
@@ -692,8 +461,11 @@ const Penjualan = () => {
                     {transaction.invoice_number || "-"}
                   </TableCell>
 
+                  {/* TANGGAL */}
                   <TableCell>
-                    {formatDate(transaction.created_at)}
+                    {formatDate(
+                      transaction.created_at
+                    )}
                   </TableCell>
 
                   <TableCell>
@@ -746,7 +518,6 @@ const Penjualan = () => {
                   </TableCell>
 
                   <TableCell className="flex justify-center space-x-2">
-
                     <Button
                       variant="outline"
                       size="sm"
@@ -772,21 +543,17 @@ const Penjualan = () => {
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
-
                   </TableCell>
 
                 </TableRow>
               )
             )}
-
           </TableBody>
-
         </Table>
       )}
 
       {!loading && transactions.length > 0 && (
         <Pagination>
-
           <PaginationContent>
 
             <PaginationItem>
@@ -803,7 +570,6 @@ const Penjualan = () => {
               length: totalPages,
             }).map((_, i) => (
               <PaginationItem key={i}>
-
                 <PaginationLink
                   isActive={
                     i + 1 === page
@@ -814,7 +580,6 @@ const Penjualan = () => {
                 >
                   {i + 1}
                 </PaginationLink>
-
               </PaginationItem>
             ))}
 
@@ -832,7 +597,6 @@ const Penjualan = () => {
             </PaginationItem>
 
           </PaginationContent>
-
         </Pagination>
       )}
 
@@ -840,11 +604,9 @@ const Penjualan = () => {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
       >
-
         <DialogContent className="w-full max-w-lg">
 
           <DialogHeader>
-
             <DialogTitle>
               {dialogMode === "add"
                 ? "Add Sales Transaction"
@@ -854,7 +616,6 @@ const Penjualan = () => {
             <DialogDescription>
               Fill in transaction details below
             </DialogDescription>
-
           </DialogHeader>
 
           <form
@@ -865,7 +626,6 @@ const Penjualan = () => {
             <div className="grid grid-cols-2 gap-4">
 
               <div>
-
                 <label className="block text-sm font-medium mb-1">
                   Transaction No *
                 </label>
@@ -874,42 +634,18 @@ const Penjualan = () => {
                   value={
                     formData.transaction_number
                   }
-                  onChange={(e) => {
-                    let value = e.target.value;
-
-                    if (!value.startsWith("INV-")) {
-                      value = "INV-" + value.replace(/^INV-/i, "");
-                    }
-
+                  onChange={(e) =>
                     setFormData({
                       ...formData,
-                      transaction_number: value,
-                    });
-                  }}
-                  onFocus={() => {
-                    if (
-                      !formData.transaction_number.startsWith(
-                        "INV-"
-                      )
-                    ) {
-                      setFormData({
-                        ...formData,
-                        transaction_number:
-                          "INV-",
-                      });
-                    }
-                  }}
+                      transaction_number:
+                        e.target.value,
+                    })
+                  }
                   required
                 />
-
-                <p className="text-xs text-gray-500 mt-1">
-                  Format: INV- + nomor yang kamu masukkan sendiri
-                </p>
-
               </div>
 
               <div>
-
                 <label className="block text-sm font-medium mb-1">
                   Customer Name
                 </label>
@@ -927,13 +663,11 @@ const Penjualan = () => {
                   }
                   placeholder="Customer name"
                 />
-
               </div>
 
             </div>
 
             <div>
-
               <label className="block text-sm font-medium mb-1">
                 Invoice
               </label>
@@ -951,11 +685,9 @@ const Penjualan = () => {
                 }
                 placeholder="Invoice number"
               />
-
             </div>
 
             <div>
-
               <label className="block text-sm font-medium mb-1">
                 Select Product *
               </label>
@@ -968,13 +700,11 @@ const Penjualan = () => {
                   handleProductChange
                 }
               >
-
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Choose a product" />
                 </SelectTrigger>
 
                 <SelectContent>
-
                   {products.map((p) => (
                     <SelectItem
                       key={p.id}
@@ -985,17 +715,13 @@ const Penjualan = () => {
                       (Stock: {p.qty})
                     </SelectItem>
                   ))}
-
                 </SelectContent>
-
               </Select>
-
             </div>
 
             <div className="grid grid-cols-3 gap-4">
 
               <div>
-
                 <label className="block text-sm font-medium mb-1">
                   Qty *
                 </label>
@@ -1013,11 +739,9 @@ const Penjualan = () => {
                   }
                   required
                 />
-
               </div>
 
               <div>
-
                 <label className="block text-sm font-medium mb-1">
                   Price *
                 </label>
@@ -1042,11 +766,9 @@ const Penjualan = () => {
                   }
                   required
                 />
-
               </div>
 
               <div>
-
                 <label className="block text-sm font-medium mb-1">
                   Total Price
                 </label>
@@ -1059,7 +781,6 @@ const Penjualan = () => {
                   disabled
                   className="bg-gray-100"
                 />
-
               </div>
 
             </div>
@@ -1067,7 +788,6 @@ const Penjualan = () => {
             <div className="grid grid-cols-2 gap-4">
 
               <div>
-
                 <label className="block text-sm font-medium mb-1">
                   Payment Method
                 </label>
@@ -1084,7 +804,6 @@ const Penjualan = () => {
                     })
                   }
                 >
-
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Payment" />
                   </SelectTrigger>
@@ -1104,13 +823,10 @@ const Penjualan = () => {
                     </SelectItem>
 
                   </SelectContent>
-
                 </Select>
-
               </div>
 
               <div>
-
                 <label className="block text-sm font-medium mb-1">
                   Status
                 </label>
@@ -1124,7 +840,6 @@ const Penjualan = () => {
                     })
                   }
                 >
-
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
@@ -1144,9 +859,7 @@ const Penjualan = () => {
                     </SelectItem>
 
                   </SelectContent>
-
                 </Select>
-
               </div>
 
             </div>
@@ -1172,9 +885,7 @@ const Penjualan = () => {
             </div>
 
           </form>
-
         </DialogContent>
-
       </Dialog>
 
     </div>
