@@ -3,10 +3,35 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableCell,
+} from "@/components/ui/table";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { Search } from "@/components/ui/search";
 import { Trash2, Edit3, Plus, Download } from "lucide-react";
 import { XlsxTable } from "@/components/ui/xlsx-table";
@@ -37,6 +62,7 @@ const BarangMasuk = () => {
   const [page, setPage] = useState(1);
   const [products, setProducts] = useState<any[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
+
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
@@ -144,7 +170,7 @@ const BarangMasuk = () => {
     setDialogMode("add");
 
     setFormData({
-      transaction_number: `BM-${Date.now().toString().slice(-6)}`,
+      transaction_number: "INV-",
       supplier_name: "",
       invoice_number: "",
       product_id: "",
@@ -231,8 +257,28 @@ const BarangMasuk = () => {
     e.preventDefault();
 
     try {
+      /*
+       * Pastikan Transaction No selalu
+       * diawali dengan INV-
+       */
+      let transactionNumber =
+        formData.transaction_number.trim();
+
+      if (!transactionNumber
+        .toUpperCase()
+        .startsWith("INV-")) {
+        transactionNumber =
+          "INV-" +
+          transactionNumber.replace(
+            /^INV-?/i,
+            ""
+          );
+      }
+
       const payload = {
         ...formData,
+        transaction_number:
+          transactionNumber,
         total_price:
           formData.qty * formData.price,
       };
@@ -291,7 +337,8 @@ const BarangMasuk = () => {
     );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">
@@ -392,7 +439,7 @@ const BarangMasuk = () => {
           <Table>
             <TableHeader>
               <TableRow>
-                {/* TANGGAL DITAMBAHKAN */}
+
                 <TableCell className="font-semibold">
                   Tanggal
                 </TableCell>
@@ -432,6 +479,7 @@ const BarangMasuk = () => {
                 <TableCell className="text-center font-semibold">
                   Actions
                 </TableCell>
+
               </TableRow>
             </TableHeader>
 
@@ -440,7 +488,6 @@ const BarangMasuk = () => {
                 (t) => (
                   <TableRow key={t.id}>
 
-                    {/* TANGGAL DITAMBAHKAN */}
                     <TableCell>
                       {t.created_at
                         ? new Date(
@@ -537,6 +584,7 @@ const BarangMasuk = () => {
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </TableCell>
+
                   </TableRow>
                 )
               )}
@@ -548,6 +596,7 @@ const BarangMasuk = () => {
         transactions.length > 0 && (
           <Pagination>
             <PaginationContent>
+
               <PaginationItem>
                 <PaginationPrevious
                   onClick={() =>
@@ -587,6 +636,7 @@ const BarangMasuk = () => {
                   }
                 />
               </PaginationItem>
+
             </PaginationContent>
           </Pagination>
         )}
@@ -596,6 +646,7 @@ const BarangMasuk = () => {
         onOpenChange={setDialogOpen}
       >
         <DialogContent className="w-full max-w-lg">
+
           <DialogHeader>
             <DialogTitle>
               {dialogMode === "add"
@@ -612,7 +663,9 @@ const BarangMasuk = () => {
             onSubmit={handleSubmit}
             className="space-y-4"
           >
+
             <div className="grid grid-cols-2 gap-4">
+
               <div>
                 <label className="block text-sm font-medium mb-1">
                   Transaction No *
@@ -622,13 +675,33 @@ const BarangMasuk = () => {
                   value={
                     formData.transaction_number
                   }
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    let value =
+                      e.target.value;
+
+                    /*
+                     * INV- selalu berada
+                     * di bagian depan.
+                     */
+                    if (
+                      !value
+                        .toUpperCase()
+                        .startsWith("INV-")
+                    ) {
+                      value =
+                        "INV-" +
+                        value.replace(
+                          /^INV-?/i,
+                          ""
+                        );
+                    }
+
                     setFormData({
                       ...formData,
                       transaction_number:
-                        e.target.value,
-                    })
-                  }
+                        value,
+                    });
+                  }}
                   required
                 />
               </div>
@@ -652,6 +725,7 @@ const BarangMasuk = () => {
                   placeholder="Invoice number"
                 />
               </div>
+
             </div>
 
             <div>
@@ -706,6 +780,7 @@ const BarangMasuk = () => {
             </div>
 
             <div className="grid grid-cols-3 gap-4">
+
               <div>
                 <label className="block text-sm font-medium mb-1">
                   Qty *
@@ -760,6 +835,7 @@ const BarangMasuk = () => {
                   className="bg-gray-100"
                 />
               </div>
+
             </div>
 
             <div>
@@ -781,6 +857,7 @@ const BarangMasuk = () => {
                 </SelectTrigger>
 
                 <SelectContent>
+
                   <SelectItem value="Menunggu Konfirmasi">
                     Menunggu Konfirmasi
                   </SelectItem>
@@ -792,11 +869,13 @@ const BarangMasuk = () => {
                   <SelectItem value="Tidak Diterima">
                     Tidak Diterima
                   </SelectItem>
+
                 </SelectContent>
               </Select>
             </div>
 
             <div className="flex justify-end space-x-3 pt-4">
+
               <Button
                 type="button"
                 variant="outline"
@@ -812,10 +891,13 @@ const BarangMasuk = () => {
                   ? "Add Transaction"
                   : "Update Transaction"}
               </Button>
+
             </div>
+
           </form>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 };
