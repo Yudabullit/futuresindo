@@ -46,6 +46,7 @@ const Penjualan = () => {
   const [products, setProducts] = useState<any[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
@@ -181,7 +182,11 @@ const Penjualan = () => {
   };
 
   const handleDeleteTransaction = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this transaction?"))
+    if (
+      !window.confirm(
+        "Are you sure you want to delete this transaction?"
+      )
+    )
       return;
 
     try {
@@ -201,7 +206,8 @@ const Penjualan = () => {
     } catch (err: any) {
       toast({
         title: "Error",
-        description: err.message || "Failed to delete transaction",
+        description:
+          err.message || "Failed to delete transaction",
         variant: "destructive",
       });
     }
@@ -248,10 +254,32 @@ const Penjualan = () => {
     } catch (err: any) {
       toast({
         title: "Error",
-        description: err.message || "Failed to save transaction",
+        description:
+          err.message || "Failed to save transaction",
         variant: "destructive",
       });
     }
+  };
+
+  // ============================================
+  // TANGGAL
+  // HANYA MENAMBAHKAN FORMAT TANGGAL
+  // DARI created_at
+  // ============================================
+
+  const formatDate = (
+    date: string | null | undefined
+  ) => {
+    if (!date) return "-";
+
+    return new Date(date).toLocaleDateString(
+      "id-ID",
+      {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      }
+    );
   };
 
   const rowsPerPage = 10;
@@ -266,8 +294,13 @@ const Penjualan = () => {
 
   return (
     <div className="space-y-6">
+
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
-        <h1 className="text-2xl font-bold">Penjualan</h1>
+        <div>
+          <h1 className="text-2xl font-bold">
+            Penjualan
+          </h1>
+        </div>
 
         <div className="flex flex-wrap gap-3 mt-4 lg:mt-0">
           <Button
@@ -292,6 +325,10 @@ const Penjualan = () => {
               {
                 header: "Invoice",
                 key: "invoice_number",
+              },
+              {
+                header: "Tanggal",
+                key: "created_at",
               },
               {
                 header: "Product",
@@ -336,7 +373,9 @@ const Penjualan = () => {
       <div className="w-full max-w-sm">
         <Search
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={(e) =>
+            setSearchTerm(e.target.value)
+          }
           placeholder="Search sales..."
           className="w-full"
         />
@@ -370,6 +409,11 @@ const Penjualan = () => {
                 Invoice
               </TableCell>
 
+              {/* TANGGAL */}
+              <TableCell className="font-semibold">
+                Tanggal
+              </TableCell>
+
               <TableCell className="font-semibold">
                 Product Name
               </TableCell>
@@ -401,90 +445,109 @@ const Penjualan = () => {
           </TableHeader>
 
           <TableBody>
-            {paginatedTransactions.map((transaction) => (
-              <TableRow key={transaction.id}>
-                <TableCell className="font-medium">
-                  {transaction.transaction_number}
-                </TableCell>
+            {paginatedTransactions.map(
+              (transaction) => (
+                <TableRow key={transaction.id}>
 
-                <TableCell>
-                  {transaction.customer_name || "-"}
-                </TableCell>
+                  <TableCell className="font-medium">
+                    {transaction.transaction_number}
+                  </TableCell>
 
-                <TableCell>
-                  {transaction.invoice_number || "-"}
-                </TableCell>
+                  <TableCell>
+                    {transaction.customer_name || "-"}
+                  </TableCell>
 
-                <TableCell>
-                  {transaction.product_name || "-"}
-                </TableCell>
+                  <TableCell>
+                    {transaction.invoice_number || "-"}
+                  </TableCell>
 
-                <TableCell>
-                  {transaction.product_code || "-"}
-                </TableCell>
+                  {/* TANGGAL */}
+                  <TableCell>
+                    {formatDate(
+                      transaction.created_at
+                    )}
+                  </TableCell>
 
-                <TableCell className="text-right">
-                  {transaction.qty?.toLocaleString() || "0"}
-                </TableCell>
+                  <TableCell>
+                    {transaction.product_name || "-"}
+                  </TableCell>
 
-                <TableCell className="text-right">
-                  Rp{" "}
-                  {Number(
-                    transaction.total_price || 0
-                  ).toLocaleString()}
-                </TableCell>
+                  <TableCell>
+                    {transaction.product_code || "-"}
+                  </TableCell>
 
-                <TableCell>
-                  <span
-                    className={`px-2 py-1 rounded text-xs ${
-                      transaction.payment_method === "Cash"
-                        ? "bg-blue-100 text-blue-800"
-                        : "bg-green-100 text-green-800"
-                    }`}
-                  >
-                    {transaction.payment_method}
-                  </span>
-                </TableCell>
+                  <TableCell className="text-right">
+                    {transaction.qty?.toLocaleString() ||
+                      "0"}
+                  </TableCell>
 
-                <TableCell>
-                  <span
-                    className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      transaction.status === "Received"
-                        ? "bg-green-100 text-green-800"
-                        : transaction.status === "Sent"
-                        ? "bg-yellow-100 text-yellow-800"
-                        : "bg-blue-100 text-blue-800"
-                    }`}
-                  >
-                    {transaction.status}
-                  </span>
-                </TableCell>
+                  <TableCell className="text-right">
+                    Rp{" "}
+                    {Number(
+                      transaction.total_price || 0
+                    ).toLocaleString()}
+                  </TableCell>
 
-                <TableCell className="flex justify-center space-x-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      handleEditTransaction(transaction)
-                    }
-                    className="px-3"
-                  >
-                    <Edit3 className="h-4 w-4" />
-                  </Button>
+                  <TableCell>
+                    <span
+                      className={`px-2 py-1 rounded text-xs ${
+                        transaction.payment_method ===
+                        "Cash"
+                          ? "bg-blue-100 text-blue-800"
+                          : "bg-green-100 text-green-800"
+                      }`}
+                    >
+                      {transaction.payment_method}
+                    </span>
+                  </TableCell>
 
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() =>
-                      handleDeleteTransaction(transaction.id)
-                    }
-                    className="px-3"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
+                  <TableCell>
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        transaction.status ===
+                        "Received"
+                          ? "bg-green-100 text-green-800"
+                          : transaction.status ===
+                            "Sent"
+                          ? "bg-yellow-100 text-yellow-800"
+                          : "bg-blue-100 text-blue-800"
+                      }`}
+                    >
+                      {transaction.status}
+                    </span>
+                  </TableCell>
+
+                  <TableCell className="flex justify-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        handleEditTransaction(
+                          transaction
+                        )
+                      }
+                      className="px-3"
+                    >
+                      <Edit3 className="h-4 w-4" />
+                    </Button>
+
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() =>
+                        handleDeleteTransaction(
+                          transaction.id
+                        )
+                      }
+                      className="px-3"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
+
+                </TableRow>
+              )
+            )}
           </TableBody>
         </Table>
       )}
@@ -492,19 +555,28 @@ const Penjualan = () => {
       {!loading && transactions.length > 0 && (
         <Pagination>
           <PaginationContent>
+
             <PaginationItem>
               <PaginationPrevious
                 onClick={() =>
-                  setPage((p) => Math.max(p - 1, 1))
+                  setPage((p) =>
+                    Math.max(p - 1, 1)
+                  )
                 }
               />
             </PaginationItem>
 
-            {Array.from({ length: totalPages }).map((_, i) => (
+            {Array.from({
+              length: totalPages,
+            }).map((_, i) => (
               <PaginationItem key={i}>
                 <PaginationLink
-                  isActive={i + 1 === page}
-                  onClick={() => setPage(i + 1)}
+                  isActive={
+                    i + 1 === page
+                  }
+                  onClick={() =>
+                    setPage(i + 1)
+                  }
                 >
                   {i + 1}
                 </PaginationLink>
@@ -515,11 +587,15 @@ const Penjualan = () => {
               <PaginationNext
                 onClick={() =>
                   setPage((p) =>
-                    Math.min(p + 1, totalPages)
+                    Math.min(
+                      p + 1,
+                      totalPages
+                    )
                   )
                 }
               />
             </PaginationItem>
+
           </PaginationContent>
         </Pagination>
       )}
@@ -529,6 +605,7 @@ const Penjualan = () => {
         onOpenChange={setDialogOpen}
       >
         <DialogContent className="w-full max-w-lg">
+
           <DialogHeader>
             <DialogTitle>
               {dialogMode === "add"
@@ -545,14 +622,18 @@ const Penjualan = () => {
             onSubmit={handleSubmit}
             className="space-y-4"
           >
+
             <div className="grid grid-cols-2 gap-4">
+
               <div>
                 <label className="block text-sm font-medium mb-1">
                   Transaction No *
                 </label>
 
                 <Input
-                  value={formData.transaction_number}
+                  value={
+                    formData.transaction_number
+                  }
                   onChange={(e) =>
                     setFormData({
                       ...formData,
@@ -570,7 +651,9 @@ const Penjualan = () => {
                 </label>
 
                 <Input
-                  value={formData.customer_name}
+                  value={
+                    formData.customer_name
+                  }
                   onChange={(e) =>
                     setFormData({
                       ...formData,
@@ -581,16 +664,18 @@ const Penjualan = () => {
                   placeholder="Customer name"
                 />
               </div>
+
             </div>
 
-            {/* INVOICE - SATU-SATUNYA PENAMBAHAN */}
             <div>
               <label className="block text-sm font-medium mb-1">
                 Invoice
               </label>
 
               <Input
-                value={formData.invoice_number}
+                value={
+                  formData.invoice_number
+                }
                 onChange={(e) =>
                   setFormData({
                     ...formData,
@@ -608,8 +693,12 @@ const Penjualan = () => {
               </label>
 
               <Select
-                value={formData.product_id}
-                onValueChange={handleProductChange}
+                value={
+                  formData.product_id
+                }
+                onValueChange={
+                  handleProductChange
+                }
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Choose a product" />
@@ -621,8 +710,9 @@ const Penjualan = () => {
                       key={p.id}
                       value={p.id}
                     >
-                      {p.code} - {p.description} (Stock:{" "}
-                      {p.qty})
+                      {p.code} -{" "}
+                      {p.description}{" "}
+                      (Stock: {p.qty})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -630,6 +720,7 @@ const Penjualan = () => {
             </div>
 
             <div className="grid grid-cols-3 gap-4">
+
               <div>
                 <label className="block text-sm font-medium mb-1">
                   Qty *
@@ -641,7 +732,9 @@ const Penjualan = () => {
                   value={formData.qty}
                   onChange={(e) =>
                     handleQtyChange(
-                      Number(e.target.value) || 0
+                      Number(
+                        e.target.value
+                      ) || 0
                     )
                   }
                   required
@@ -661,11 +754,14 @@ const Penjualan = () => {
                     setFormData((prev) => ({
                       ...prev,
                       price:
-                        Number(e.target.value) || 0,
+                        Number(
+                          e.target.value
+                        ) || 0,
                       total_price:
                         prev.qty *
-                        (Number(e.target.value) ||
-                          0),
+                        (Number(
+                          e.target.value
+                        ) || 0),
                     }))
                   }
                   required
@@ -679,25 +775,32 @@ const Penjualan = () => {
 
                 <Input
                   type="number"
-                  value={formData.total_price}
+                  value={
+                    formData.total_price
+                  }
                   disabled
                   className="bg-gray-100"
                 />
               </div>
+
             </div>
 
             <div className="grid grid-cols-2 gap-4">
+
               <div>
                 <label className="block text-sm font-medium mb-1">
                   Payment Method
                 </label>
 
                 <Select
-                  value={formData.payment_method}
+                  value={
+                    formData.payment_method
+                  }
                   onValueChange={(val) =>
                     setFormData({
                       ...formData,
-                      payment_method: val,
+                      payment_method:
+                        val,
                     })
                   }
                 >
@@ -706,6 +809,7 @@ const Penjualan = () => {
                   </SelectTrigger>
 
                   <SelectContent>
+
                     <SelectItem value="Cash">
                       Cash
                     </SelectItem>
@@ -717,6 +821,7 @@ const Penjualan = () => {
                     <SelectItem value="Credit">
                       Credit
                     </SelectItem>
+
                   </SelectContent>
                 </Select>
               </div>
@@ -740,6 +845,7 @@ const Penjualan = () => {
                   </SelectTrigger>
 
                   <SelectContent>
+
                     <SelectItem value="Prepared">
                       Prepared
                     </SelectItem>
@@ -751,12 +857,15 @@ const Penjualan = () => {
                     <SelectItem value="Received">
                       Received
                     </SelectItem>
+
                   </SelectContent>
                 </Select>
               </div>
+
             </div>
 
             <div className="flex justify-end space-x-3 pt-4">
+
               <Button
                 type="button"
                 variant="outline"
@@ -772,10 +881,13 @@ const Penjualan = () => {
                   ? "Add Transaction"
                   : "Update Transaction"}
               </Button>
+
             </div>
+
           </form>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 };
