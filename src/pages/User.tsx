@@ -43,13 +43,10 @@ import {
 import { Search } from "@/components/ui/search";
 
 import {
-  Trash2,
-  Edit3,
-  Plus,
-  Download,
+  KeyRound,
   Eye,
   EyeOff,
-  KeyRound,
+  Download,
 } from "lucide-react";
 
 import { XlsxTable } from "@/components/ui/xlsx-table";
@@ -86,7 +83,7 @@ const User = () => {
     useState<string | null>(null);
 
   // ==========================================================
-  // SEARCH / FILTER
+  // SEARCH
   // ==========================================================
 
   const [searchTerm, setSearchTerm] =
@@ -99,26 +96,14 @@ const User = () => {
     useState("all");
 
   // ==========================================================
-  // DIALOG
+  // PASSWORD DIALOG
   // ==========================================================
 
-  const [dialogOpen, setDialogOpen] =
+  const [passwordDialogOpen, setPasswordDialogOpen] =
     useState(false);
 
-  const [dialogMode, setDialogMode] =
-    useState<"add" | "edit">("add");
-
-  // ==========================================================
-  // FORM
-  // ==========================================================
-
-  const [formData, setFormData] =
-    useState({
-      username: "",
-      email: "",
-      role: "staff",
-      status: "active",
-    });
+  const [selectedUser, setSelectedUser] =
+    useState<UserItem | null>(null);
 
   // ==========================================================
   // PASSWORD
@@ -136,12 +121,8 @@ const User = () => {
   const [showConfirmPassword, setShowConfirmPassword] =
     useState(false);
 
-  // ==========================================================
-  // EDITING
-  // ==========================================================
-
-  const [editingId, setEditingId] =
-    useState<string | null>(null);
+  const [changingPassword, setChangingPassword] =
+    useState(false);
 
   // ==========================================================
   // PAGINATION
@@ -152,8 +133,7 @@ const User = () => {
 
   const rowsPerPage = 10;
 
-  const { toast } =
-    useToast();
+  const { toast } = useToast();
 
   // ==========================================================
   // FETCH USERS
@@ -164,46 +144,21 @@ const User = () => {
       setLoading(true);
       setError(null);
 
-      // ------------------------------------------------------
-      // Make sure session is valid
-      // ------------------------------------------------------
-
-      const {
-        data: sessionData,
-        error: sessionError,
-      } =
-        await supabase.auth.getSession();
-
-      if (sessionError) {
-        throw sessionError;
-      }
-
-      if (!sessionData.session) {
-        throw new Error(
-          "Your session has expired. Please login again."
+      let query = supabase
+        .from("users")
+        .select(
+          "id, username, email, role, status, created_at"
+        )
+        .order(
+          "created_at",
+          {
+            ascending: false,
+          }
         );
-      }
 
-      let query =
-        supabase
-          .from("users")
-          .select(
-            "id, username, email, role, status, created_at"
-          )
-          .order(
-            "created_at",
-            {
-              ascending: false,
-            }
-          );
-
-      // ------------------------------------------------------
       // SEARCH
-      // ------------------------------------------------------
 
-      if (
-        searchTerm.trim()
-      ) {
+      if (searchTerm.trim()) {
         const search =
           searchTerm.trim();
 
@@ -212,41 +167,32 @@ const User = () => {
         );
       }
 
-      // ------------------------------------------------------
       // ROLE
-      // ------------------------------------------------------
 
       if (
-        roleFilter &&
         roleFilter !== "all"
       ) {
-        query =
-          query.eq(
-            "role",
-            roleFilter
-          );
+        query = query.eq(
+          "role",
+          roleFilter
+        );
       }
 
-      // ------------------------------------------------------
       // STATUS
-      // ------------------------------------------------------
 
       if (
-        statusFilter &&
         statusFilter !== "all"
       ) {
-        query =
-          query.eq(
-            "status",
-            statusFilter
-          );
+        query = query.eq(
+          "status",
+          statusFilter
+        );
       }
 
       const {
         data,
         error: fetchError,
-      } =
-        await query;
+      } = await query;
 
       if (fetchError) {
         throw fetchError;
@@ -262,12 +208,11 @@ const User = () => {
             rowsPerPage
         ) || 1;
 
-      setPage(
-        (currentPage) =>
-          Math.min(
-            currentPage,
-            totalPages
-          )
+      setPage((current) =>
+        Math.min(
+          current,
+          totalPages
+        )
       );
     } catch (err: any) {
       console.error(
@@ -287,7 +232,7 @@ const User = () => {
   };
 
   // ==========================================================
-  // FETCH FILTER CHANGE
+  // FETCH WHEN FILTER CHANGES
   // ==========================================================
 
   useEffect(() => {
@@ -299,56 +244,13 @@ const User = () => {
   ]);
 
   // ==========================================================
-  // RESET FORM
+  // OPEN PASSWORD DIALOG
   // ==========================================================
 
-  const resetForm = () => {
-    setFormData({
-      username: "",
-      email: "",
-      role: "staff",
-      status: "active",
-    });
-
-    setNewPassword("");
-    setConfirmPassword("");
-
-    setShowPassword(false);
-    setShowConfirmPassword(false);
-
-    setEditingId(null);
-  };
-
-  // ==========================================================
-  // ADD USER
-  // ==========================================================
-
-  const handleAddUser = () => {
-    resetForm();
-
-    setDialogMode("add");
-    setDialogOpen(true);
-  };
-
-  // ==========================================================
-  // EDIT USER
-  // ==========================================================
-
-  const handleEditUser = (
+  const openPasswordDialog = (
     user: UserItem
   ) => {
-    setDialogMode("edit");
-
-    setFormData({
-      username:
-        user.username || "",
-      email:
-        user.email || "",
-      role:
-        user.role || "staff",
-      status:
-        user.status || "active",
-    });
+    setSelectedUser(user);
 
     setNewPassword("");
     setConfirmPassword("");
@@ -356,597 +258,271 @@ const User = () => {
     setShowPassword(false);
     setShowConfirmPassword(false);
 
-    setEditingId(user.id);
-
-    setDialogOpen(true);
+    setPasswordDialogOpen(true);
   };
 
   // ==========================================================
-  // CALL ADMIN EDGE FUNCTION
+  // CLOSE PASSWORD DIALOG
   // ==========================================================
 
-  const callAdminUser = async (
-    payload: Record<
-      string,
-      unknown
-    >
+  const closePasswordDialog = () => {
+    if (changingPassword) {
+      return;
+    }
+
+    setPasswordDialogOpen(false);
+
+    setSelectedUser(null);
+
+    setNewPassword("");
+    setConfirmPassword("");
+
+    setShowPassword(false);
+    setShowConfirmPassword(false);
+  };
+
+  // ==========================================================
+  // CHANGE PASSWORD
+  // ==========================================================
+
+  const handleChangePassword = async (
+    e: React.FormEvent
   ) => {
-    // --------------------------------------------------------
-    // GET CURRENT SESSION
-    // --------------------------------------------------------
+    e.preventDefault();
 
-    let {
-      data: sessionData,
-      error: sessionError,
-    } =
-      await supabase.auth.getSession();
+    // ========================================================
+    // USER CHECK
+    // ========================================================
 
-    if (sessionError) {
-      throw sessionError;
+    if (!selectedUser) {
+      toast({
+        title: "Error",
+        description:
+          "No user selected.",
+        variant:
+          "destructive",
+      });
+
+      return;
     }
 
-    let session =
-      sessionData.session;
+    // ========================================================
+    // PASSWORD
+    // ========================================================
 
-    // --------------------------------------------------------
-    // NO SESSION
-    // --------------------------------------------------------
+    const password =
+      newPassword;
 
-    if (!session) {
-      throw new Error(
-        "Your login session has expired. Please login again."
-      );
+    if (!password) {
+      toast({
+        title:
+          "Password required",
+        description:
+          "Please enter a new password.",
+        variant:
+          "destructive",
+      });
+
+      return;
     }
 
-    // --------------------------------------------------------
-    // CHECK TOKEN EXPIRATION
-    // --------------------------------------------------------
+    // ========================================================
+    // MIN LENGTH
+    // ========================================================
 
-    const expiresAt =
-      session.expires_at || 0;
+    if (password.length < 8) {
+      toast({
+        title:
+          "Password too short",
+        description:
+          "Password must contain at least 8 characters.",
+        variant:
+          "destructive",
+      });
 
-    const now =
-      Math.floor(
-        Date.now() / 1000
-      );
+      return;
+    }
 
-    // Refresh if expires within 60 seconds
+    // ========================================================
+    // CONFIRM
+    // ========================================================
+
     if (
-      expiresAt <
-      now + 60
+      password !==
+      confirmPassword
     ) {
-      console.log(
-        "Refreshing Supabase session..."
-      );
+      toast({
+        title:
+          "Password mismatch",
+        description:
+          "Password and confirmation password do not match.",
+        variant:
+          "destructive",
+      });
+
+      return;
+    }
+
+    // ========================================================
+    // START
+    // ========================================================
+
+    try {
+      setChangingPassword(true);
+
+      // ======================================================
+      // GET CURRENT SESSION
+      // ======================================================
+
+      let {
+        data: sessionData,
+      } = await supabase.auth.getSession();
+
+      let session =
+        sessionData.session;
+
+      // ======================================================
+      // NO SESSION
+      // ======================================================
+
+      if (!session) {
+        toast({
+          title:
+            "Session expired",
+          description:
+            "Please login again.",
+          variant:
+            "destructive",
+        });
+
+        return;
+      }
+
+      // ======================================================
+      // REFRESH SESSION
+      //
+      // This is important.
+      //
+      // It prevents sending an expired
+      // access token to the Edge Function.
+      // ======================================================
 
       const {
-        data: refreshData,
-        error:
-          refreshError,
+        data: refreshedData,
+        error: refreshError,
       } =
         await supabase.auth.refreshSession();
 
-      if (refreshError) {
+      if (
+        refreshError ||
+        !refreshedData.session
+      ) {
         console.error(
           "REFRESH SESSION ERROR:",
           refreshError
         );
 
-        throw new Error(
-          "Your login session has expired. Please login again."
-        );
-      }
+        toast({
+          title:
+            "Session expired",
+          description:
+            "Your login session has expired. Please login again.",
+          variant:
+            "destructive",
+        });
 
-      if (
-        !refreshData.session
-      ) {
-        throw new Error(
-          "Unable to refresh login session. Please login again."
-        );
+        return;
       }
 
       session =
-        refreshData.session;
-    }
+        refreshedData.session;
 
-    // --------------------------------------------------------
-    // GET TOKEN
-    // --------------------------------------------------------
+      // ======================================================
+      // CALL EDGE FUNCTION
+      // ======================================================
 
-    const accessToken =
-      session.access_token;
+      const {
+        data,
+        error,
+      } =
+        await supabase.functions.invoke(
+          "admin-password",
+          {
+            body: {
+              user_id:
+                selectedUser.id,
 
-    if (!accessToken) {
-      throw new Error(
-        "Authentication token is missing. Please login again."
-      );
-    }
+              password:
+                password,
+            },
+            headers: {
+              Authorization:
+                `Bearer ${session.access_token}`,
+            },
+          }
+        );
 
-    console.log(
-      "Calling admin-user with authenticated session."
-    );
+      // ======================================================
+      // FUNCTION ERROR
+      // ======================================================
 
-    // --------------------------------------------------------
-    // INVOKE EDGE FUNCTION
-    // --------------------------------------------------------
+      if (error) {
+        console.error(
+          "EDGE FUNCTION ERROR:",
+          error
+        );
 
-    const {
-      data,
-      error,
-    } =
-      await supabase.functions.invoke(
-        "admin-user",
-        {
-          body: payload,
+        throw new Error(
+          error.message ||
+            "Edge Function request failed."
+        );
+      }
 
-          headers: {
-            Authorization:
-              `Bearer ${accessToken}`,
-          },
-        }
-      );
+      // ======================================================
+      // RESPONSE ERROR
+      // ======================================================
 
-    // --------------------------------------------------------
-    // EDGE FUNCTION TRANSPORT ERROR
-    // --------------------------------------------------------
+      if (
+        !data ||
+        data.success !== true
+      ) {
+        throw new Error(
+          data?.error ||
+            "Password change failed."
+        );
+      }
 
-    if (error) {
+      // ======================================================
+      // SUCCESS
+      // ======================================================
+
+      toast({
+        title:
+          "Password changed",
+        description:
+          `Password for ${selectedUser.username} has been changed successfully.`,
+      });
+
+      closePasswordDialog();
+    } catch (err: any) {
       console.error(
-        "EDGE FUNCTION ERROR:",
-        error
+        "CHANGE PASSWORD ERROR:",
+        err
       );
 
-      // ------------------------------------------------------
-      // Try refresh once if authentication failed
-      // ------------------------------------------------------
-
-      const errorMessage =
-        error.message || "";
-
-      if (
-        errorMessage
-          .toLowerCase()
-          .includes("401") ||
-        errorMessage
-          .toLowerCase()
-          .includes(
-            "invalid"
-          ) ||
-        errorMessage
-          .toLowerCase()
-          .includes(
-            "expired"
-          )
-      ) {
-        console.log(
-          "Authentication failed. Refreshing session and retrying..."
-        );
-
-        const {
-          data:
-            retrySessionData,
-          error:
-            retryRefreshError,
-        } =
-          await supabase.auth.refreshSession();
-
-        if (
-          !retryRefreshError &&
-          retrySessionData.session
-        ) {
-          const retryToken =
-            retrySessionData
-              .session
-              .access_token;
-
-          const {
-            data:
-              retryData,
-            error:
-              retryError,
-          } =
-            await supabase.functions.invoke(
-              "admin-user",
-              {
-                body:
-                  payload,
-
-                headers: {
-                  Authorization:
-                    `Bearer ${retryToken}`,
-                },
-              }
-            );
-
-          if (
-            !retryError &&
-            retryData?.success ===
-              true
-          ) {
-            return retryData;
-          }
-
-          if (
-            retryData?.error
-          ) {
-            throw new Error(
-              retryData.error
-            );
-          }
-
-          if (
-            retryError
-          ) {
-            throw retryError;
-          }
-        }
-      }
-
-      throw error;
+      toast({
+        title:
+          "Failed to change password",
+        description:
+          err?.message ||
+          "Something went wrong.",
+        variant:
+          "destructive",
+      });
+    } finally {
+      setChangingPassword(false);
     }
-
-    // --------------------------------------------------------
-    // CHECK SERVER RESPONSE
-    // --------------------------------------------------------
-
-    if (
-      !data ||
-      data.success !== true
-    ) {
-      throw new Error(
-        data?.error ||
-          "Operation failed."
-      );
-    }
-
-    return data;
   };
-
-  // ==========================================================
-  // DELETE USER
-  // ==========================================================
-
-  const handleDeleteUser =
-    async (
-      id: string
-    ) => {
-      const user =
-        users.find(
-          (u) =>
-            u.id === id
-        );
-
-      if (!user) {
-        return;
-      }
-
-      const confirmed =
-        window.confirm(
-          `Delete user "${user.username}"?\n\nThis will delete the authentication account too.`
-        );
-
-      if (!confirmed) {
-        return;
-      }
-
-      try {
-        setLoading(true);
-
-        await callAdminUser({
-          action:
-            "delete",
-
-          user_id:
-            id,
-        });
-
-        toast({
-          title:
-            "Success",
-          description:
-            "User deleted successfully.",
-        });
-
-        await fetchUsers();
-      } catch (err: any) {
-        console.error(
-          "DELETE USER ERROR:",
-          err
-        );
-
-        toast({
-          title:
-            "Error",
-          description:
-            err?.message ||
-            "Failed to delete user.",
-          variant:
-            "destructive",
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-  // ==========================================================
-  // SUBMIT
-  // ==========================================================
-
-  const handleSubmit =
-    async (
-      e: React.FormEvent
-    ) => {
-      e.preventDefault();
-
-      // ======================================================
-      // USERNAME
-      // ======================================================
-
-      const username =
-        formData.username.trim();
-
-      if (!username) {
-        toast({
-          title:
-            "Username required",
-          description:
-            "Please enter a username.",
-          variant:
-            "destructive",
-        });
-
-        return;
-      }
-
-      // ======================================================
-      // EMAIL
-      // ======================================================
-
-      const email =
-        formData.email.trim();
-
-      if (!email) {
-        toast({
-          title:
-            "Email required",
-          description:
-            "Please enter an email.",
-          variant:
-            "destructive",
-        });
-
-        return;
-      }
-
-      // ======================================================
-      // PASSWORD FOR ADD
-      // ======================================================
-
-      if (
-        dialogMode ===
-          "add" &&
-        !newPassword
-      ) {
-        toast({
-          title:
-            "Password required",
-          description:
-            "New user must have a password.",
-          variant:
-            "destructive",
-        });
-
-        return;
-      }
-
-      // ======================================================
-      // PASSWORD VALIDATION
-      // ======================================================
-
-      if (newPassword) {
-        if (
-          newPassword.length <
-          8
-        ) {
-          toast({
-            title:
-              "Password too short",
-            description:
-              "Password must contain at least 8 characters.",
-            variant:
-              "destructive",
-          });
-
-          return;
-        }
-
-        if (
-          newPassword !==
-          confirmPassword
-        ) {
-          toast({
-            title:
-              "Password mismatch",
-            description:
-              "Password and confirmation password do not match.",
-            variant:
-              "destructive",
-          });
-
-          return;
-        }
-      }
-
-      // ======================================================
-      // SAVE
-      // ======================================================
-
-      try {
-        setLoading(true);
-
-        // ====================================================
-        // CREATE
-        // ====================================================
-
-        if (
-          dialogMode ===
-          "add"
-        ) {
-          await callAdminUser({
-            action:
-              "create",
-
-            username,
-
-            email,
-
-            password:
-              newPassword,
-
-            role:
-              formData.role,
-
-            status:
-              formData.status,
-          });
-
-          toast({
-            title:
-              "Success",
-            description:
-              "User created successfully.",
-          });
-        }
-
-        // ====================================================
-        // UPDATE
-        // ====================================================
-
-        else {
-          if (!editingId) {
-            throw new Error(
-              "User ID is missing."
-            );
-          }
-
-          const payload: Record<
-            string,
-            unknown
-          > = {
-            action:
-              "update",
-
-            user_id:
-              editingId,
-
-            username,
-
-            email,
-
-            role:
-              formData.role,
-
-            status:
-              formData.status,
-          };
-
-          // --------------------------------------------------
-          // PASSWORD ONLY IF PROVIDED
-          // --------------------------------------------------
-
-          if (
-            newPassword.trim()
-          ) {
-            payload.password =
-              newPassword;
-          }
-
-          const result =
-            await callAdminUser(
-              payload
-            );
-
-          // --------------------------------------------------
-          // IMPORTANT:
-          // If admin changed OWN password,
-          // refresh Supabase session.
-          // --------------------------------------------------
-
-          if (
-            result?.password_changed &&
-            editingId ===
-              (
-                await supabase.auth.getUser()
-              ).data.user?.id
-          ) {
-            console.log(
-              "Own password changed. Refreshing session..."
-            );
-
-            const {
-              error:
-                refreshError,
-            } =
-              await supabase.auth.refreshSession();
-
-            if (
-              refreshError
-            ) {
-              console.error(
-                "SESSION REFRESH AFTER PASSWORD CHANGE:",
-                refreshError
-              );
-            }
-          }
-
-          toast({
-            title:
-              "Success",
-            description:
-              newPassword
-                ? "User and password updated successfully."
-                : "User updated successfully.",
-          });
-        }
-
-        // ====================================================
-        // CLOSE
-        // ====================================================
-
-        setDialogOpen(false);
-
-        resetForm();
-
-        // Small delay allows auth state
-        // to settle after password change.
-        await new Promise(
-          (resolve) =>
-            setTimeout(
-              resolve,
-              300
-            )
-        );
-
-        await fetchUsers();
-      } catch (err: any) {
-        console.error(
-          "SAVE USER ERROR:",
-          err
-        );
-
-        toast({
-          title:
-            "Error",
-          description:
-            err?.message ||
-            "Failed to save user.",
-          variant:
-            "destructive",
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
 
   // ==========================================================
   // PAGINATION
@@ -962,6 +538,7 @@ const User = () => {
     users.slice(
       (page - 1) *
         rowsPerPage,
+
       page *
         rowsPerPage
     );
@@ -991,9 +568,9 @@ const User = () => {
   return (
     <div className="space-y-6">
 
-      {/* =====================================================
+      {/* ====================================================
           HEADER
-      ===================================================== */}
+      ==================================================== */}
 
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
 
@@ -1001,80 +578,57 @@ const User = () => {
           User Management
         </h1>
 
-        <div className="flex flex-wrap gap-3 mt-4 lg:mt-0">
-
+        <XlsxTable
+          data={users}
+          columns={[
+            {
+              header: "ID",
+              key: "id",
+            },
+            {
+              header: "Username",
+              key: "username",
+            },
+            {
+              header: "Email",
+              key: "email",
+            },
+            {
+              header: "Role",
+              key: "role",
+            },
+            {
+              header: "Status",
+              key: "status",
+            },
+            {
+              header: "Created At",
+              key: "created_at",
+            },
+          ]}
+          filename="users.xlsx"
+          className="flex items-center mt-4 lg:mt-0"
+        >
           <Button
-            onClick={
-              handleAddUser
-            }
-            className="flex items-center"
+            variant="outline"
+            size="sm"
           >
-            <Plus className="mr-2 h-4 w-4" />
+            <Download className="mr-2 h-4 w-4" />
 
-            Add User
+            Export
           </Button>
+        </XlsxTable>
 
-          <XlsxTable
-            data={users}
-            columns={[
-              {
-                header:
-                  "ID",
-                key: "id",
-              },
-              {
-                header:
-                  "Username",
-                key: "username",
-              },
-              {
-                header:
-                  "Email",
-                key: "email",
-              },
-              {
-                header:
-                  "Role",
-                key: "role",
-              },
-              {
-                header:
-                  "Status",
-                key: "status",
-              },
-              {
-                header:
-                  "Created At",
-                key: "created_at",
-              },
-            ]}
-            filename="users.xlsx"
-            className="flex items-center"
-          >
-            <Button
-              variant="outline"
-              size="sm"
-              className="px-3"
-            >
-              <Download className="mr-2 h-4 w-4" />
-
-              Export
-            </Button>
-          </XlsxTable>
-
-        </div>
       </div>
 
-      {/* =====================================================
+      {/* ====================================================
           FILTER
-      ===================================================== */}
+      ==================================================== */}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
         <Search
-          value={
-            searchTerm
-          }
+          value={searchTerm}
           onChange={(e) =>
             setSearchTerm(
               e.target.value
@@ -1085,9 +639,7 @@ const User = () => {
         />
 
         <Select
-          value={
-            roleFilter
-          }
+          value={roleFilter}
           onValueChange={
             setRoleFilter
           }
@@ -1097,6 +649,7 @@ const User = () => {
           </SelectTrigger>
 
           <SelectContent>
+
             <SelectItem value="all">
               All Roles
             </SelectItem>
@@ -1112,13 +665,12 @@ const User = () => {
             <SelectItem value="staff">
               Staff
             </SelectItem>
+
           </SelectContent>
         </Select>
 
         <Select
-          value={
-            statusFilter
-          }
+          value={statusFilter}
           onValueChange={
             setStatusFilter
           }
@@ -1128,6 +680,7 @@ const User = () => {
           </SelectTrigger>
 
           <SelectContent>
+
             <SelectItem value="all">
               All Status
             </SelectItem>
@@ -1139,38 +692,36 @@ const User = () => {
             <SelectItem value="inactive">
               Inactive
             </SelectItem>
+
           </SelectContent>
         </Select>
 
       </div>
 
-      {/* =====================================================
+      {/* ====================================================
           ERROR
-      ===================================================== */}
+      ==================================================== */}
 
       {error && (
         <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded">
-          <p>
-            {error}
-          </p>
+          <p>{error}</p>
         </div>
       )}
 
-      {/* =====================================================
+      {/* ====================================================
           EMPTY
-      ===================================================== */}
+      ==================================================== */}
 
       {!loading &&
-        users.length ===
-          0 && (
+        users.length === 0 && (
           <div className="text-center py-10 text-gray-500">
             No users found
           </div>
         )}
 
-      {/* =====================================================
+      {/* ====================================================
           TABLE
-      ===================================================== */}
+      ==================================================== */}
 
       {!loading &&
         users.length > 0 && (
@@ -1201,7 +752,7 @@ const User = () => {
                 </TableCell>
 
                 <TableCell className="text-center font-semibold">
-                  Actions
+                  Password
                 </TableCell>
 
               </TableRow>
@@ -1222,17 +773,13 @@ const User = () => {
                     </TableCell>
 
                     <TableCell>
-                      {u.email ||
-                        "-"}
+                      {u.email || "-"}
                     </TableCell>
 
                     <TableCell>
 
                       <span className="capitalize px-2 py-1 bg-gray-100 rounded text-xs">
-
-                        {u.role ||
-                          "staff"}
-
+                        {u.role || "staff"}
                       </span>
 
                     </TableCell>
@@ -1247,10 +794,7 @@ const User = () => {
                             : "bg-red-100 text-red-800"
                         }`}
                       >
-
-                        {u.status ||
-                          "active"}
-
+                        {u.status || "active"}
                       </span>
 
                     </TableCell>
@@ -1261,34 +805,21 @@ const User = () => {
                       )}
                     </TableCell>
 
-                    <TableCell className="flex justify-center space-x-2">
+                    <TableCell className="text-center">
 
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
                         onClick={() =>
-                          handleEditUser(
+                          openPasswordDialog(
                             u
                           )
                         }
-                        className="px-3"
                       >
-                        <Edit3 className="h-4 w-4" />
-                      </Button>
+                        <KeyRound className="h-4 w-4 mr-2" />
 
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="sm"
-                        onClick={() =>
-                          handleDeleteUser(
-                            u.id
-                          )
-                        }
-                        className="px-3"
-                      >
-                        <Trash2 className="h-4 w-4" />
+                        Change Password
                       </Button>
 
                     </TableCell>
@@ -1303,9 +834,9 @@ const User = () => {
           </Table>
         )}
 
-      {/* =====================================================
+      {/* ====================================================
           PAGINATION
-      ===================================================== */}
+      ==================================================== */}
 
       {!loading &&
         users.length > 0 && (
@@ -1378,50 +909,39 @@ const User = () => {
             </PaginationContent>
 
           </Pagination>
+
         )}
 
-      {/* =====================================================
-          ADD / EDIT DIALOG
-      ===================================================== */}
+      {/* ====================================================
+          CHANGE PASSWORD DIALOG
+      ==================================================== */}
 
       <Dialog
         open={
-          dialogOpen
+          passwordDialogOpen
         }
         onOpenChange={(
           open
         ) => {
-
-          setDialogOpen(
-            open
-          );
-
           if (!open) {
-            resetForm();
+            closePasswordDialog();
           }
-
         }}
       >
 
-        <DialogContent className="w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-full max-w-md">
 
           <DialogHeader>
 
             <DialogTitle>
-
-              {dialogMode ===
-              "add"
-                ? "Add User"
-                : "Edit User"}
-
+              Change Password
             </DialogTitle>
 
             <DialogDescription>
 
-              {dialogMode ===
-              "add"
-                ? "Create a new application user."
-                : "Update user information and optionally change password."}
+              {selectedUser
+                ? `Change password for ${selectedUser.username}.`
+                : "Change user password."}
 
             </DialogDescription>
 
@@ -1429,86 +949,40 @@ const User = () => {
 
           <form
             onSubmit={
-              handleSubmit
+              handleChangePassword
             }
             className="space-y-4 mt-2"
           >
 
-            {/* USERNAME */}
+            {/* =================================================
+                USER
+            ================================================= */}
 
             <div>
 
               <label className="block text-sm font-medium mb-1">
-                Username *
+                User
               </label>
 
               <Input
                 value={
-                  formData.username
+                  selectedUser
+                    ?.username || ""
                 }
-                onChange={(e) =>
-                  setFormData(
-                    (prev) => ({
-                      ...prev,
-                      username:
-                        e.target
-                          .value,
-                    })
-                  )
-                }
-                placeholder="Enter username"
-                required
+                disabled
               />
 
             </div>
 
-            {/* EMAIL */}
+            {/* =================================================
+                PASSWORD
+            ================================================= */}
 
             <div>
 
               <label className="block text-sm font-medium mb-1">
-                Email *
+                New Password
               </label>
-
-              <Input
-                type="email"
-                value={
-                  formData.email
-                }
-                onChange={(e) =>
-                  setFormData(
-                    (prev) => ({
-                      ...prev,
-                      email:
-                        e.target
-                          .value,
-                    })
-                  )
-                }
-                placeholder="user@example.com"
-                required
-              />
-
-            </div>
-
-            {/* PASSWORD */}
-
-            <div>
-
-              <div className="flex items-center gap-2 mb-1">
-
-                <KeyRound className="h-4 w-4" />
-
-                <label className="block text-sm font-medium">
-
-                  {dialogMode ===
-                  "add"
-                    ? "Password *"
-                    : "New Password"}
-
-                </label>
-
-              </div>
 
               <div className="relative">
 
@@ -1523,22 +997,16 @@ const User = () => {
                   }
                   onChange={(e) =>
                     setNewPassword(
-                      e.target
-                        .value
+                      e.target.value
                     )
                   }
-                  placeholder={
-                    dialogMode ===
-                    "add"
-                      ? "Enter password"
-                      : "Leave blank to keep current password"
-                  }
-                  required={
-                    dialogMode ===
-                    "add"
-                  }
+                  placeholder="Enter new password"
                   autoComplete="new-password"
                   className="pr-10"
+                  disabled={
+                    changingPassword
+                  }
+                  required
                 />
 
                 <button
@@ -1549,11 +1017,9 @@ const User = () => {
                         !value
                     )
                   }
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                  aria-label={
-                    showPassword
-                      ? "Hide password"
-                      : "Show password"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
+                  disabled={
+                    changingPassword
                   }
                 >
 
@@ -1567,16 +1033,15 @@ const User = () => {
 
               </div>
 
-              {dialogMode ===
-                "edit" && (
-                <p className="text-xs text-gray-500 mt-1">
-                  Isi hanya jika ingin mengganti password.
-                </p>
-              )}
+              <p className="text-xs text-gray-500 mt-1">
+                Minimum 8 characters.
+              </p>
 
             </div>
 
-            {/* CONFIRM PASSWORD */}
+            {/* =================================================
+                CONFIRM
+            ================================================= */}
 
             <div>
 
@@ -1597,18 +1062,16 @@ const User = () => {
                   }
                   onChange={(e) =>
                     setConfirmPassword(
-                      e.target
-                        .value
+                      e.target.value
                     )
                   }
-                  placeholder="Confirm password"
-                  required={
-                    dialogMode ===
-                      "add" ||
-                    !!newPassword
-                  }
+                  placeholder="Confirm new password"
                   autoComplete="new-password"
                   className="pr-10"
+                  disabled={
+                    changingPassword
+                  }
+                  required
                 />
 
                 <button
@@ -1619,11 +1082,9 @@ const User = () => {
                         !value
                     )
                   }
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                  aria-label={
-                    showConfirmPassword
-                      ? "Hide confirmation password"
-                      : "Show confirmation password"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
+                  disabled={
+                    changingPassword
                   }
                 >
 
@@ -1639,118 +1100,20 @@ const User = () => {
 
             </div>
 
-            {/* ROLE */}
+            {/* =================================================
+                BUTTON
+            ================================================= */}
 
-            <div>
-
-              <label className="block text-sm font-medium mb-1">
-                Role *
-              </label>
-
-              <Select
-                value={
-                  formData.role
-                }
-                onValueChange={(
-                  value
-                ) =>
-                  setFormData(
-                    (prev) => ({
-                      ...prev,
-                      role:
-                        value,
-                    })
-                  )
-                }
-              >
-
-                <SelectTrigger className="w-full">
-
-                  <SelectValue placeholder="Select role" />
-
-                </SelectTrigger>
-
-                <SelectContent>
-
-                  <SelectItem value="admin">
-                    Admin
-                  </SelectItem>
-
-                  <SelectItem value="manager">
-                    Manager
-                  </SelectItem>
-
-                  <SelectItem value="staff">
-                    Staff
-                  </SelectItem>
-
-                </SelectContent>
-
-              </Select>
-
-            </div>
-
-            {/* STATUS */}
-
-            <div>
-
-              <label className="block text-sm font-medium mb-1">
-                Status *
-              </label>
-
-              <Select
-                value={
-                  formData.status
-                }
-                onValueChange={(
-                  value
-                ) =>
-                  setFormData(
-                    (prev) => ({
-                      ...prev,
-                      status:
-                        value,
-                    })
-                  )
-                }
-              >
-
-                <SelectTrigger className="w-full">
-
-                  <SelectValue placeholder="Select status" />
-
-                </SelectTrigger>
-
-                <SelectContent>
-
-                  <SelectItem value="active">
-                    Active
-                  </SelectItem>
-
-                  <SelectItem value="inactive">
-                    Inactive
-                  </SelectItem>
-
-                </SelectContent>
-
-              </Select>
-
-            </div>
-
-            {/* BUTTON */}
-
-            <div className="flex justify-end space-x-3 pt-4">
+            <div className="flex justify-end gap-3 pt-4">
 
               <Button
                 type="button"
                 variant="outline"
-                onClick={() =>
-                  setDialogOpen(
-                    false
-                  )
+                onClick={
+                  closePasswordDialog
                 }
                 disabled={
-                  loading
+                  changingPassword
                 }
               >
                 Cancel
@@ -1759,15 +1122,14 @@ const User = () => {
               <Button
                 type="submit"
                 disabled={
-                  loading
+                  changingPassword
                 }
               >
-                {loading
-                  ? "Saving..."
-                  : dialogMode ===
-                    "add"
-                  ? "Add User"
-                  : "Update User"}
+
+                {changingPassword
+                  ? "Changing..."
+                  : "Change Password"}
+
               </Button>
 
             </div>
