@@ -2147,15 +2147,15 @@ const Penjualan = () => {
                   <SelectContent>
 
                     <SelectItem value="Disiapkan">
-                      Prepared
+                      Disiapkan
                     </SelectItem>
 
                     <SelectItem value="Dalam Pengiriman">
-                      Sent
+                      Dalam Pengiriman
                     </SelectItem>
 
                     <SelectItem value="Terkirim">
-                      Received
+                      Terkirim
                     </SelectItem>
 
                   </SelectContent>
