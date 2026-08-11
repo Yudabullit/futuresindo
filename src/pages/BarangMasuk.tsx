@@ -1,6 +1,9 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
+
 import { supabase } from "@/integrations/supabase/client";
+
 import { useToast } from "@/components/ui/use-toast";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -38,15 +41,35 @@ import {
 } from "@/components/ui/pagination";
 
 import { Search } from "@/components/ui/search";
+
 import {
   Trash2,
   Edit3,
   Plus,
   Download,
+  X,
 } from "lucide-react";
 
 import { XlsxTable } from "@/components/ui/xlsx-table";
 
+
+// ============================================================
+// STATUS
+// ============================================================
+
+const STATUS_MENUNGGU =
+  "Menunggu Konfirmasi";
+
+const STATUS_DITERIMA =
+  "Barang Diterima";
+
+const STATUS_TIDAK_DITERIMA =
+  "Tidak Diterima";
+
+
+// ============================================================
+// TYPES
+// ============================================================
 
 interface BarangMasukItem {
   id: string;
@@ -77,15 +100,42 @@ interface BarangMasukItem {
 }
 
 
-// ============================================================
-// STATUS
-// ============================================================
+interface ProductLine {
+  tempId: string;
 
-const STATUS_MENUNGGU = "Menunggu Konfirmasi";
+  product_id: string;
 
-const STATUS_DITERIMA = "Barang Diterima";
+  product_name: string;
 
-const STATUS_TIDAK_DITERIMA = "Tidak Diterima";
+  product_code: string;
+
+  qty: number;
+
+  price: number;
+
+  total_price: number;
+}
+
+
+interface InvoiceGroup {
+  groupKey: string;
+
+  transaction_number: string;
+
+  invoice_number: string;
+
+  supplier_name: string;
+
+  created_at?: string;
+
+  status: string;
+
+  items: BarangMasukItem[];
+
+  total_qty: number;
+
+  total_price: number;
+}
 
 
 // ============================================================
@@ -94,126 +144,205 @@ const STATUS_TIDAK_DITERIMA = "Tidak Diterima";
 
 const BarangMasuk = () => {
 
-  const [transactions, setTransactions] =
-    useState<BarangMasukItem[]>([]);
+  // ==========================================================
+  // DATA
+  // ==========================================================
 
-  const [loading, setLoading] =
-    useState(true);
-
-  const [error, setError] =
-    useState<string | null>(null);
-
-  const [searchTerm, setSearchTerm] =
-    useState("");
-
-  const [dialogOpen, setDialogOpen] =
-    useState(false);
-
-  const [dialogMode, setDialogMode] =
-    useState<"add" | "edit">("add");
-
-  const [page, setPage] =
-    useState(1);
-
-  const [products, setProducts] =
-    useState<any[]>([]);
-
-  const [editingId, setEditingId] =
-    useState<string | null>(null);
+  const [
+    transactions,
+    setTransactions,
+  ] = useState<BarangMasukItem[]>([]);
 
 
-  const { toast } = useToast();
+  const [
+    products,
+    setProducts,
+  ] = useState<any[]>([]);
 
 
-  // ============================================================
-  // FORM DATA
-  // ============================================================
+  // ==========================================================
+  // UI
+  // ==========================================================
 
-  const [formData, setFormData] = useState({
-    transaction_number: "BM-",
-
-    supplier_name: "",
-
-    invoice_number: "",
-
-    product_id: "",
-
-    product_name: "",
-
-    product_code: "",
-
-    qty: 0,
-
-    price: 0,
-
-    total_price: 0,
-
-    status: STATUS_MENUNGGU,
-
-    notes: "",
-  });
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
 
 
-  // ============================================================
-  // FETCH BARANG MASUK
-  // ============================================================
-
-  const fetchTransactions = async () => {
-
-    try {
-
-      setLoading(true);
-
-      let query = supabase
-        .from("barang_masuk")
-        .select("*")
-        .order("created_at", {
-          ascending: false,
-        });
+  const [
+    error,
+    setError,
+  ] = useState<string | null>(
+    null
+  );
 
 
-      if (searchTerm) {
+  const [
+    searchTerm,
+    setSearchTerm,
+  ] = useState("");
 
-        query = query.or(
-          `transaction_number.ilike.%${searchTerm}%,supplier_name.ilike.%${searchTerm}%,product_name.ilike.%${searchTerm}%`
+
+  const [
+    page,
+    setPage,
+  ] = useState(1);
+
+
+  const [
+    dialogOpen,
+    setDialogOpen,
+  ] = useState(false);
+
+
+  const [
+    dialogMode,
+    setDialogMode,
+  ] = useState<
+    "add" | "edit"
+  >("add");
+
+
+  const [
+    editingId,
+    setEditingId,
+  ] = useState<string | null>(
+    null
+  );
+
+
+  const { toast } =
+    useToast();
+
+
+  // ==========================================================
+  // INVOICE HEADER FORM
+  // ==========================================================
+
+  const [
+    transactionNumber,
+    setTransactionNumber,
+  ] = useState("BM-");
+
+
+  const [
+    supplierName,
+    setSupplierName,
+  ] = useState("");
+
+
+  const [
+    invoiceNumber,
+    setInvoiceNumber,
+  ] = useState("");
+
+
+  const [
+    status,
+    setStatus,
+  ] = useState(
+    STATUS_MENUNGGU
+  );
+
+
+  const [
+    notes,
+    setNotes,
+  ] = useState("");
+
+
+  // ==========================================================
+  // PRODUCT LINES
+  // ==========================================================
+
+  const [
+    productLines,
+    setProductLines,
+  ] = useState<ProductLine[]>(
+    []
+  );
+
+
+  // ==========================================================
+  // FETCH TRANSACTIONS
+  // ==========================================================
+
+  const fetchTransactions =
+    async () => {
+
+      try {
+
+        setLoading(true);
+
+        let query = supabase
+          .from("barang_masuk")
+          .select("*")
+          .order(
+            "created_at",
+            {
+              ascending:
+                false,
+            }
+          );
+
+
+        if (
+          searchTerm.trim()
+        ) {
+
+          const term =
+            searchTerm.trim();
+
+
+          query = query.or(
+            `transaction_number.ilike.%${term}%,supplier_name.ilike.%${term}%,invoice_number.ilike.%${term}%,product_name.ilike.%${term}%,product_code.ilike.%${term}%`
+          );
+
+        }
+
+
+        const {
+          data,
+          error,
+        } = await query;
+
+
+        if (error) {
+          throw error;
+        }
+
+
+        setTransactions(
+          (data ||
+            []) as BarangMasukItem[]
         );
 
+
+        setError(null);
+
+      } catch (
+        err: any
+      ) {
+
+        console.error(err);
+
+
+        setError(
+          err?.message ||
+            "Failed to load transactions"
+        );
+
+
+        setTransactions([]);
+
+      } finally {
+
+        setLoading(false);
+
       }
 
-
-      const {
-        data,
-        error,
-      } = await query;
-
-
-      if (error) {
-        throw error;
-      }
-
-
-      setTransactions(data || []);
-
-      setError(null);
-
-    } catch (err: any) {
-
-      console.error(err);
-
-      setError(
-        err?.message ||
-        "Failed to load transactions"
-      );
-
-      setTransactions([]);
-
-    } finally {
-
-      setLoading(false);
-
-    }
-
-  };
+    };
 
 
   useEffect(() => {
@@ -223,13 +352,12 @@ const BarangMasuk = () => {
   }, [searchTerm]);
 
 
-  // ============================================================
+  // ==========================================================
   // FETCH PRODUCTS
-  // ============================================================
+  // ==========================================================
 
-  useEffect(() => {
-
-    const fetchProducts = async () => {
+  const fetchProducts =
+    async () => {
 
       try {
 
@@ -239,9 +367,13 @@ const BarangMasuk = () => {
         } = await supabase
           .from("products")
           .select("*")
-          .order("description", {
-            ascending: true,
-          });
+          .order(
+            "description",
+            {
+              ascending:
+                true,
+            }
+          );
 
 
         if (error) {
@@ -249,9 +381,13 @@ const BarangMasuk = () => {
         }
 
 
-        setProducts(data || []);
+        setProducts(
+          data || []
+        );
 
-      } catch (err: any) {
+      } catch (
+        err: any
+      ) {
 
         console.error(
           "Failed to load products:",
@@ -263,763 +399,1323 @@ const BarangMasuk = () => {
     };
 
 
+  useEffect(() => {
+
     fetchProducts();
 
   }, []);
 
 
-  // ============================================================
-  // PRODUCT CHANGE
-  // ============================================================
+  // ==========================================================
+  // GROUP TRANSACTIONS BY INVOICE
+  // ==========================================================
 
-  const handleProductChange = (
-    productId: string
-  ) => {
+  const invoiceGroups =
+    useMemo(() => {
 
-    const product =
-      products.find(
-        (prod) =>
-          prod.id === productId
-      );
+      const map =
+        new Map<
+          string,
+          InvoiceGroup
+        >();
 
 
-    if (product) {
-
-      setFormData((prev) => ({
-
-        ...prev,
-
-        product_id:
-          productId,
-
-        product_name:
-          product.description || "",
-
-        product_code:
-          product.code || "",
-
-        price:
-          Number(product.price || 0),
-
-        total_price:
-          Number(prev.qty || 0) *
-          Number(product.price || 0),
-
-      }));
-
-    } else {
-
-      setFormData((prev) => ({
-
-        ...prev,
-
-        product_id:
-          productId,
-
-      }));
-
-    }
-
-  };
-
-
-  // ============================================================
-  // QTY CHANGE
-  // ============================================================
-
-  const handleQtyChange = (
-    qty: number
-  ) => {
-
-    setFormData((prev) => ({
-
-      ...prev,
-
-      qty,
-
-      total_price:
-        qty *
-        Number(prev.price || 0),
-
-    }));
-
-  };
-
-
-  // ============================================================
-  // PRICE CHANGE
-  // ============================================================
-
-  const handlePriceChange = (
-    price: number
-  ) => {
-
-    setFormData((prev) => ({
-
-      ...prev,
-
-      price,
-
-      total_price:
-        Number(prev.qty || 0) *
-        price,
-
-    }));
-
-  };
-
-
-  // ============================================================
-  // ADD TRANSACTION
-  // ============================================================
-
-  const handleAddTransaction = () => {
-
-    setDialogMode("add");
-
-    setEditingId(null);
-
-
-    setFormData({
-
-      transaction_number:
-        "BM-",
-
-      supplier_name:
-        "",
-
-      invoice_number:
-        "",
-
-      product_id:
-        "",
-
-      product_name:
-        "",
-
-      product_code:
-        "",
-
-      qty:
-        0,
-
-      price:
-        0,
-
-      total_price:
-        0,
-
-      status:
-        STATUS_MENUNGGU,
-
-      notes:
-        "",
-
-    });
-
-
-    setDialogOpen(true);
-
-  };
-
-
-  // ============================================================
-  // EDIT TRANSACTION
-  // ============================================================
-
-  const handleEditTransaction = (
-    transaction: BarangMasukItem
-  ) => {
-
-    setDialogMode("edit");
-
-
-    setFormData({
-
-      transaction_number:
-        transaction.transaction_number,
-
-      supplier_name:
-        transaction.supplier_name || "",
-
-      invoice_number:
-        transaction.invoice_number || "",
-
-      product_id:
-        transaction.product_id || "",
-
-      product_name:
-        transaction.product_name || "",
-
-      product_code:
-        transaction.product_code || "",
-
-      qty:
-        Number(transaction.qty || 0),
-
-      price:
-        Number(transaction.price || 0),
-
-      total_price:
-        Number(transaction.total_price || 0),
-
-      status:
-        transaction.status ||
-        STATUS_MENUNGGU,
-
-      notes:
-        transaction.notes || "",
-
-    });
-
-
-    setEditingId(
-      transaction.id
-    );
-
-    setDialogOpen(true);
-
-  };
-
-
-  // ============================================================
-  // STATUS HELPER
-  // ============================================================
-
-  const isReceived = (
-    status: string
-  ) => {
-
-    return (
-      status ===
-      STATUS_DITERIMA
-    );
-
-  };
-
-
-  // ============================================================
-  // DELETE TRANSACTION
-  //
-  // PENTING:
-  // React TIDAK mengubah products.qty.
-  //
-  // Supabase trigger yang akan mengurangi stok
-  // jika transaksi yang dihapus berstatus Barang Diterima.
-  // ============================================================
-
-  const handleDeleteTransaction = async (
-    id: string
-  ) => {
-
-    if (
-      !window.confirm(
-        "Are you sure you want to delete this transaction?"
-      )
-    ) {
-
-      return;
-
-    }
-
-
-    try {
-
-      // --------------------------------------------------------
-      // AMBIL TRANSAKSI
-      // --------------------------------------------------------
-
-      const {
-        data: transaction,
-        error: fetchError,
-      } = await supabase
-
-        .from("barang_masuk")
-
-        .select("*")
-
-        .eq("id", id)
-
-        .single();
-
-
-      if (fetchError) {
-        throw fetchError;
-      }
-
-
-      // --------------------------------------------------------
-      // DELETE
-      //
-      // JANGAN UPDATE products.qty DI SINI.
-      //
-      // Supabase trigger akan menangani stok.
-      // --------------------------------------------------------
-
-      const {
-        error: deleteError,
-      } = await supabase
-
-        .from("barang_masuk")
-
-        .delete()
-
-        .eq("id", id);
-
-
-      if (deleteError) {
-        throw deleteError;
-      }
-
-
-      // --------------------------------------------------------
-      // REFRESH TRANSACTIONS
-      // --------------------------------------------------------
-
-      await fetchTransactions();
-
-
-      // --------------------------------------------------------
-      // REFRESH PRODUCTS
-      // --------------------------------------------------------
-
-      const {
-        data: refreshedProducts,
-        error: productError,
-      } = await supabase
-
-        .from("products")
-
-        .select("*")
-
-        .order("description", {
-          ascending: true,
-        });
-
-
-      if (!productError) {
-
-        setProducts(
-          refreshedProducts || []
-        );
-
-      }
-
-
-      toast({
-
-        title:
-          "Success",
-
-        description:
-          isReceived(
-            transaction?.status
-          )
-            ? "Transaction deleted. Received stock was restored by Supabase."
-            : "Transaction deleted successfully.",
-
-      });
-
-
-    } catch (err: any) {
-
-      console.error(err);
-
-
-      toast({
-
-        title:
-          "Error",
-
-        description:
-          err?.message ||
-          "Failed to delete transaction",
-
-        variant:
-          "destructive",
-
-      });
-
-    }
-
-  };
-
-
-  // ============================================================
-  // SUBMIT TRANSACTION
-  // ============================================================
-
-  const handleSubmit = async (
-    e: React.FormEvent
-  ) => {
-
-    e.preventDefault();
-
-
-    try {
-
-      // ========================================================
-      // VALIDATION
-      // ========================================================
-
-      if (
-        !formData.transaction_number ||
-        formData.transaction_number ===
-          "BM-"
+      for (
+        const item of transactions
       ) {
 
-        toast({
-
-          title:
-            "Error",
-
-          description:
-            "Please enter the transaction number after BM-",
-
-          variant:
-            "destructive",
-
-        });
-
-        return;
-
-      }
+        const invoice =
+          (
+            item.invoice_number ||
+            ""
+          ).trim();
 
 
-      if (!formData.product_id) {
-
-        toast({
-
-          title:
-            "Error",
-
-          description:
-            "Please select a product",
-
-          variant:
-            "destructive",
-
-        });
-
-        return;
-
-      }
+        const groupKey =
+          invoice ||
+          item.transaction_number;
 
 
-      if (
-        Number(formData.qty || 0) <= 0
-      ) {
+        if (
+          !map.has(groupKey)
+        ) {
 
-        toast({
+          map.set(
+            groupKey,
+            {
 
-          title:
-            "Error",
+              groupKey,
 
-          description:
-            "Quantity must be greater than 0",
+              transaction_number:
+                item.transaction_number,
 
-          variant:
-            "destructive",
+              invoice_number:
+                invoice,
 
-        });
+              supplier_name:
+                item.supplier_name ||
+                "",
 
-        return;
+              created_at:
+                item.created_at,
 
-      }
+              status:
+                item.status,
 
+              items: [],
 
-      // ========================================================
-      // PAYLOAD
-      // ========================================================
+              total_qty:
+                0,
 
-      const payload = {
+              total_price:
+                0,
 
-        ...formData,
+            }
+          );
 
-        qty:
-          Number(formData.qty || 0),
-
-        price:
-          Number(formData.price || 0),
-
-        total_price:
-          Number(formData.qty || 0) *
-          Number(formData.price || 0),
-
-      };
-
-
-      // ========================================================
-      // ADD
-      // ========================================================
-
-      if (
-        dialogMode === "add"
-      ) {
-
-        const {
-          error: insertError,
-        } = await supabase
-
-          .from("barang_masuk")
-
-          .insert(payload);
-
-
-        if (insertError) {
-          throw insertError;
         }
 
 
-        // ======================================================
-        // PENTING:
-        //
-        // TIDAK ADA updateProductStock() DI SINI.
-        //
-        // Supabase trigger:
-        //
-        // INSERT barang_masuk
-        //       ↓
-        // sync_barang_masuk_stock()
-        //       ↓
-        // products.qty
-        //
-        // ======================================================
+        const group =
+          map.get(groupKey)!;
 
 
-        toast({
-
-          title:
-            "Success",
-
-          description:
-            isReceived(
-              formData.status
-            )
-              ? `Transaction added. Stock increased by ${formData.qty}.`
-              : "Transaction added. Stock was not changed because the item has not been received.",
-
-        });
-
-      }
+        group.items.push(
+          item
+        );
 
 
-      // ========================================================
-      // EDIT
-      // ========================================================
-
-      else if (
-        editingId
-      ) {
-
-        // ------------------------------------------------------
-        // UPDATE TRANSACTION SAJA
-        // ------------------------------------------------------
-
-        const {
-          error: updateError,
-        } = await supabase
-
-          .from("barang_masuk")
-
-          .update(payload)
-
-          .eq(
-            "id",
-            editingId
+        group.total_qty +=
+          Number(
+            item.qty || 0
           );
 
 
-        if (updateError) {
-          throw updateError;
+        group.total_price +=
+          Number(
+            item.total_price ||
+              0
+          );
+
+      }
+
+
+      return Array.from(
+        map.values()
+      );
+
+    }, [transactions]);
+
+
+  // ==========================================================
+  // FILTER GROUPS
+  // ==========================================================
+
+  const filteredGroups =
+    useMemo(() => {
+
+      if (
+        !searchTerm.trim()
+      ) {
+
+        return invoiceGroups;
+
+      }
+
+
+      const term =
+        searchTerm
+          .trim()
+          .toLowerCase();
+
+
+      return invoiceGroups.filter(
+        (group) => {
+
+          const headerMatch =
+
+            group.invoice_number
+              .toLowerCase()
+              .includes(term) ||
+
+            group.transaction_number
+              .toLowerCase()
+              .includes(term) ||
+
+            group.supplier_name
+              .toLowerCase()
+              .includes(term);
+
+
+          const productMatch =
+            group.items.some(
+              (item) =>
+
+                (
+                  item.product_name ||
+                  ""
+                )
+                  .toLowerCase()
+                  .includes(term) ||
+
+                (
+                  item.product_code ||
+                  ""
+                )
+                  .toLowerCase()
+                  .includes(term)
+            );
+
+
+          return (
+            headerMatch ||
+            productMatch
+          );
+
         }
+      );
+
+    }, [
+      invoiceGroups,
+      searchTerm,
+    ]);
 
 
-        // ======================================================
-        // PENTING:
-        //
-        // TIDAK ADA LOGIKA UPDATE PRODUCTS.QTY DI REACT.
-        //
-        // Semua perubahan stok ditangani Supabase trigger.
-        //
-        // ======================================================
-
-
-        toast({
-
-          title:
-            "Success",
-
-          description:
-            "Transaction updated successfully.",
-
-        });
-
-      }
-
-
-      // ========================================================
-      // CLOSE DIALOG
-      // ========================================================
-
-      setDialogOpen(false);
-
-      setEditingId(null);
-
-
-      // ========================================================
-      // REFRESH TRANSACTIONS
-      // ========================================================
-
-      await fetchTransactions();
-
-
-      // ========================================================
-      // REFRESH PRODUCTS
-      // ========================================================
-
-      const {
-        data: refreshedProducts,
-        error: refreshedProductError,
-      } = await supabase
-
-        .from("products")
-
-        .select("*")
-
-        .order("description", {
-          ascending: true,
-        });
-
-
-      if (!refreshedProductError) {
-
-        setProducts(
-          refreshedProducts || []
-        );
-
-      }
-
-
-    } catch (err: any) {
-
-      console.error(err);
-
-
-      toast({
-
-        title:
-          "Error",
-
-        description:
-          err?.message ||
-          "Failed to save transaction",
-
-        variant:
-          "destructive",
-
-      });
-
-    }
-
-  };
-
-
-  // ============================================================
-  // FORMAT DATE
-  // ============================================================
-
-  const formatDate = (
-    date:
-      string |
-      null |
-      undefined
-  ) => {
-
-    if (!date) {
-      return "-";
-    }
-
-
-    return new Date(
-      date
-    ).toLocaleDateString(
-      "id-ID",
-      {
-
-        day:
-          "2-digit",
-
-        month:
-          "2-digit",
-
-        year:
-          "numeric",
-
-      }
-    );
-
-  };
-
-
-  // ============================================================
+  // ==========================================================
   // PAGINATION
-  // ============================================================
+  // ==========================================================
 
   const rowsPerPage = 10;
 
 
   const totalPages =
-    Math.ceil(
-      transactions.length /
-      rowsPerPage
-    ) || 1;
+    Math.max(
+      1,
+      Math.ceil(
+        filteredGroups.length /
+          rowsPerPage
+      )
+    );
 
 
-  const paginatedTransactions =
-    transactions.slice(
-
+  const paginatedGroups =
+    filteredGroups.slice(
       (page - 1) *
         rowsPerPage,
 
       page *
         rowsPerPage
-
     );
 
 
-  // ============================================================
-  // RETURN
-  // ============================================================
+  // ==========================================================
+  // RESET FORM
+  // ==========================================================
+
+  const resetForm =
+    () => {
+
+      setTransactionNumber(
+        "BM-"
+      );
+
+      setSupplierName("");
+
+      setInvoiceNumber("");
+
+      setStatus(
+        STATUS_MENUNGGU
+      );
+
+      setNotes("");
+
+      setProductLines([]);
+
+      setEditingId(null);
+
+    };
+
+
+  // ==========================================================
+  // OPEN ADD
+  // ==========================================================
+
+  const handleAddTransaction =
+    () => {
+
+      setDialogMode("add");
+
+      resetForm();
+
+      setDialogOpen(true);
+
+    };
+
+
+  // ==========================================================
+  // ADD PRODUCT LINE
+  // ==========================================================
+
+  const addProductLine =
+    () => {
+
+      const newLine:
+        ProductLine = {
+
+        tempId:
+          `${Date.now()}-${Math.random()}`,
+
+        product_id:
+          "",
+
+        product_name:
+          "",
+
+        product_code:
+          "",
+
+        qty:
+          0,
+
+        price:
+          0,
+
+        total_price:
+          0,
+
+      };
+
+
+      setProductLines(
+        (prev) => [
+          ...prev,
+          newLine,
+        ]
+      );
+
+    };
+
+
+  // ==========================================================
+  // REMOVE PRODUCT LINE
+  // ==========================================================
+
+  const removeProductLine =
+    (
+      tempId: string
+    ) => {
+
+      setProductLines(
+        (prev) =>
+          prev.filter(
+            (line) =>
+              line.tempId !==
+              tempId
+          )
+      );
+
+    };
+
+
+  // ==========================================================
+  // CHANGE PRODUCT
+  // ==========================================================
+
+  const changeProductLine =
+    (
+      tempId: string,
+      productId: string
+    ) => {
+
+      const product =
+        products.find(
+          (p) =>
+            p.id ===
+            productId
+        );
+
+
+      setProductLines(
+        (prev) =>
+          prev.map(
+            (line) => {
+
+              if (
+                line.tempId !==
+                tempId
+              ) {
+
+                return line;
+
+              }
+
+
+              const price =
+                Number(
+                  product?.price ||
+                    0
+                );
+
+
+              return {
+
+                ...line,
+
+                product_id:
+                  productId,
+
+                product_name:
+                  product?.description ||
+                  "",
+
+                product_code:
+                  product?.code ||
+                  "",
+
+                price,
+
+                total_price:
+                  Number(
+                    line.qty || 0
+                  ) * price,
+
+              };
+
+            }
+          )
+      );
+
+    };
+
+
+  // ==========================================================
+  // CHANGE QTY
+  // ==========================================================
+
+  const changeProductQty =
+    (
+      tempId: string,
+      qty: number
+    ) => {
+
+      setProductLines(
+        (prev) =>
+          prev.map(
+            (line) => {
+
+              if (
+                line.tempId !==
+                tempId
+              ) {
+
+                return line;
+
+              }
+
+
+              const safeQty =
+                Math.max(
+                  0,
+                  Number(
+                    qty || 0
+                  )
+                );
+
+
+              return {
+
+                ...line,
+
+                qty:
+                  safeQty,
+
+                total_price:
+                  safeQty *
+                  Number(
+                    line.price || 0
+                  ),
+
+              };
+
+            }
+          )
+      );
+
+    };
+
+
+  // ==========================================================
+  // CHANGE PRICE
+  // ==========================================================
+
+  const changeProductPrice =
+    (
+      tempId: string,
+      price: number
+    ) => {
+
+      setProductLines(
+        (prev) =>
+          prev.map(
+            (line) => {
+
+              if (
+                line.tempId !==
+                tempId
+              ) {
+
+                return line;
+
+              }
+
+
+              const safePrice =
+                Math.max(
+                  0,
+                  Number(
+                    price || 0
+                  )
+                );
+
+
+              return {
+
+                ...line,
+
+                price:
+                  safePrice,
+
+                total_price:
+                  Number(
+                    line.qty || 0
+                  ) *
+                  safePrice,
+
+              };
+
+            }
+          )
+      );
+
+    };
+
+
+  // ==========================================================
+  // TOTAL INVOICE
+  // ==========================================================
+
+  const invoiceTotalQty =
+    productLines.reduce(
+      (
+        total,
+        line
+      ) =>
+        total +
+        Number(
+          line.qty || 0
+        ),
+      0
+    );
+
+
+  const invoiceTotalPrice =
+    productLines.reduce(
+      (
+        total,
+        line
+      ) =>
+        total +
+        Number(
+          line.total_price ||
+            0
+        ),
+      0
+    );
+
+
+  // ==========================================================
+  // EDIT SINGLE ITEM
+  //
+  // Untuk keamanan stok:
+  // edit tetap dilakukan pada SATU row barang_masuk.
+  //
+  // Supabase trigger yang mengatur products.qty.
+  // ==========================================================
+
+  const handleEditTransaction =
+    (
+      transaction: BarangMasukItem
+    ) => {
+
+      setDialogMode("edit");
+
+      setEditingId(
+        transaction.id
+      );
+
+
+      setTransactionNumber(
+        transaction.transaction_number
+      );
+
+
+      setSupplierName(
+        transaction.supplier_name ||
+          ""
+      );
+
+
+      setInvoiceNumber(
+        transaction.invoice_number ||
+          ""
+      );
+
+
+      setStatus(
+        transaction.status ||
+          STATUS_MENUNGGU
+      );
+
+
+      setNotes(
+        transaction.notes ||
+          ""
+      );
+
+
+      setProductLines([
+
+        {
+
+          tempId:
+            transaction.id,
+
+          product_id:
+            transaction.product_id ||
+            "",
+
+          product_name:
+            transaction.product_name ||
+            "",
+
+          product_code:
+            transaction.product_code ||
+            "",
+
+          qty:
+            Number(
+              transaction.qty ||
+                0
+            ),
+
+          price:
+            Number(
+              transaction.price ||
+                0
+            ),
+
+          total_price:
+            Number(
+              transaction.total_price ||
+                0
+            ),
+
+        },
+
+      ]);
+
+
+      setDialogOpen(true);
+
+    };
+
+
+  // ==========================================================
+  // DELETE SINGLE ITEM
+  //
+  // Jangan update products.qty di React.
+  // DELETE akan memicu Supabase trigger.
+  // ==========================================================
+
+  const handleDeleteTransaction =
+    async (
+      id: string
+    ) => {
+
+      if (
+        !window.confirm(
+          "Delete this product line?"
+        )
+      ) {
+
+        return;
+
+      }
+
+
+      try {
+
+        const {
+          error,
+        } = await supabase
+          .from("barang_masuk")
+          .delete()
+          .eq(
+            "id",
+            id
+          );
+
+
+        if (error) {
+          throw error;
+        }
+
+
+        await fetchTransactions();
+
+        await fetchProducts();
+
+
+        toast({
+
+          title:
+            "Success",
+
+          description:
+            "Product line deleted successfully.",
+
+        });
+
+      } catch (
+        err: any
+      ) {
+
+        console.error(err);
+
+
+        toast({
+
+          title:
+            "Error",
+
+          description:
+            err?.message ||
+            "Failed to delete product line",
+
+          variant:
+            "destructive",
+
+        });
+
+      }
+
+    };
+
+
+  // ==========================================================
+  // VALIDATE PRODUCT LINES
+  // ==========================================================
+
+  const validateProductLines =
+    () => {
+
+      if (
+        productLines.length ===
+        0
+      ) {
+
+        return "Add at least one product.";
+
+      }
+
+
+      const productIds =
+        new Set<string>();
+
+
+      for (
+        const line of productLines
+      ) {
+
+        if (
+          !line.product_id
+        ) {
+
+          return "Please select a product for every row.";
+
+        }
+
+
+        if (
+          Number(
+            line.qty || 0
+          ) <= 0
+        ) {
+
+          return "Every product quantity must be greater than 0.";
+
+        }
+
+
+        if (
+          productIds.has(
+            line.product_id
+          )
+        ) {
+
+          return "The same product cannot be added twice in the same invoice. Please combine the quantity into one row.";
+
+        }
+
+
+        productIds.add(
+          line.product_id
+        );
+
+      }
+
+
+      return null;
+
+    };
+
+
+  // ==========================================================
+  // SUBMIT
+  // ==========================================================
+
+  const handleSubmit =
+    async (
+      e: React.FormEvent
+    ) => {
+
+      e.preventDefault();
+
+
+      try {
+
+        // ======================================================
+        // VALIDATE TRANSACTION NUMBER
+        // ======================================================
+
+        if (
+          !transactionNumber ||
+          transactionNumber ===
+            "BM-"
+        ) {
+
+          toast({
+
+            title:
+              "Error",
+
+            description:
+              "Please enter the transaction number.",
+
+            variant:
+              "destructive",
+
+          });
+
+          return;
+
+        }
+
+
+        // ======================================================
+        // VALIDATE INVOICE
+        // ======================================================
+
+        if (
+          !invoiceNumber.trim()
+        ) {
+
+          toast({
+
+            title:
+              "Error",
+
+            description:
+              "Please enter the invoice number.",
+
+            variant:
+              "destructive",
+
+          });
+
+          return;
+
+        }
+
+
+        // ======================================================
+        // VALIDATE LINES
+        // ======================================================
+
+        const validationError =
+          validateProductLines();
+
+
+        if (
+          validationError
+        ) {
+
+          toast({
+
+            title:
+              "Error",
+
+            description:
+              validationError,
+
+            variant:
+              "destructive",
+
+          });
+
+          return;
+
+        }
+
+
+        // ======================================================
+        // EDIT
+        //
+        // Hanya satu row karena edit individual.
+        // ======================================================
+
+        if (
+          dialogMode ===
+            "edit" &&
+          editingId
+        ) {
+
+          const line =
+            productLines[0];
+
+
+          const payload = {
+
+            transaction_number:
+              transactionNumber,
+
+            supplier_name:
+              supplierName,
+
+            invoice_number:
+              invoiceNumber.trim(),
+
+            product_id:
+              line.product_id,
+
+            product_name:
+              line.product_name,
+
+            product_code:
+              line.product_code,
+
+            qty:
+              Number(
+                line.qty
+              ),
+
+            price:
+              Number(
+                line.price
+              ),
+
+            total_price:
+              Number(
+                line.total_price
+              ),
+
+            status,
+
+            notes,
+
+          };
+
+
+          // ====================================================
+          // IMPORTANT:
+          //
+          // React hanya update barang_masuk.
+          //
+          // products.qty TIDAK disentuh.
+          //
+          // Supabase trigger menangani:
+          //
+          // Menunggu -> Diterima       +qty
+          // Tidak Diterima -> Diterima +qty
+          // Diterima -> Menunggu       -qty
+          // Diterima -> Tidak Diterima -qty
+          // Diterima -> Diterima       0
+          // ====================================================
+
+          const {
+            error,
+          } = await supabase
+            .from("barang_masuk")
+            .update(
+              payload
+            )
+            .eq(
+              "id",
+              editingId
+            );
+
+
+          if (error) {
+            throw error;
+          }
+
+
+          toast({
+
+            title:
+              "Success",
+
+            description:
+              "Product transaction updated successfully.",
+
+          });
+
+        }
+
+
+        // ======================================================
+        // ADD MULTIPLE PRODUCTS
+        // ======================================================
+
+        else {
+
+          // ====================================================
+          // CHECK DUPLICATE INVOICE
+          //
+          // Kita tidak memblokir invoice yang sudah ada secara
+          // global karena invoice bisa saja diedit/dilanjutkan.
+          // Tetapi kita tampilkan warning jika invoice sudah ada.
+          // ====================================================
+
+          const {
+            data:
+              existingInvoice,
+            error:
+              invoiceCheckError,
+          } = await supabase
+
+            .from(
+              "barang_masuk"
+            )
+
+            .select(
+              "id"
+            )
+
+            .eq(
+              "invoice_number",
+              invoiceNumber.trim()
+            )
+
+            .limit(1);
+
+
+          if (
+            invoiceCheckError
+          ) {
+
+            throw invoiceCheckError;
+
+          }
+
+
+          if (
+            existingInvoice &&
+            existingInvoice.length >
+              0
+          ) {
+
+            const proceed =
+              window.confirm(
+                `Invoice ${invoiceNumber.trim()} already exists. Add these products to the same invoice?`
+              );
+
+
+            if (
+              !proceed
+            ) {
+
+              return;
+
+            }
+
+          }
+
+
+          // ====================================================
+          // ONE INSERT STATEMENT
+          //
+          // Semua product masuk sebagai satu INSERT request.
+          //
+          // Jika salah satu row gagal, PostgreSQL akan gagalkan
+          // statement tersebut.
+          //
+          // Tidak ada update products.qty dari React.
+          // ====================================================
+
+          const payload =
+            productLines.map(
+              (line) => ({
+
+                transaction_number:
+                  transactionNumber,
+
+                supplier_name:
+                  supplierName,
+
+                invoice_number:
+                  invoiceNumber.trim(),
+
+                product_id:
+                  line.product_id,
+
+                product_name:
+                  line.product_name,
+
+                product_code:
+                  line.product_code,
+
+                qty:
+                  Number(
+                    line.qty
+                  ),
+
+                price:
+                  Number(
+                    line.price
+                  ),
+
+                total_price:
+                  Number(
+                    line.total_price
+                  ),
+
+                status,
+
+                notes,
+
+              })
+            );
+
+
+          const {
+            error,
+          } = await supabase
+
+            .from(
+              "barang_masuk"
+            )
+
+            .insert(
+              payload
+            );
+
+
+          if (error) {
+            throw error;
+          }
+
+
+          toast({
+
+            title:
+              "Success",
+
+            description:
+              `${productLines.length} product(s) added to invoice ${invoiceNumber}.`,
+
+          });
+
+        }
+
+
+        // ======================================================
+        // CLOSE
+        // ======================================================
+
+        setDialogOpen(false);
+
+        resetForm();
+
+
+        // ======================================================
+        // REFRESH
+        // ======================================================
+
+        await fetchTransactions();
+
+        await fetchProducts();
+
+
+      } catch (
+        err: any
+      ) {
+
+        console.error(err);
+
+
+        toast({
+
+          title:
+            "Error",
+
+          description:
+            err?.message ||
+            "Failed to save transaction.",
+
+          variant:
+            "destructive",
+
+        });
+
+      }
+
+    };
+
+
+  // ==========================================================
+  // FORMAT DATE
+  // ==========================================================
+
+  const formatDate =
+    (
+      date:
+        string |
+        null |
+        undefined
+    ) => {
+
+      if (!date) {
+        return "-";
+      }
+
+
+      return new Date(
+        date
+      ).toLocaleDateString(
+        "id-ID",
+        {
+
+          day:
+            "2-digit",
+
+          month:
+            "2-digit",
+
+          year:
+            "numeric",
+
+        }
+      );
+
+    };
+
+
+  // ==========================================================
+  // FORMAT NUMBER
+  // ==========================================================
+
+  const formatNumber =
+    (
+      value: number
+    ) => {
+
+      return Number(
+        value || 0
+      ).toLocaleString(
+        "id-ID"
+      );
+
+    };
+
+
+  // ==========================================================
+  // STATUS BADGE
+  // ==========================================================
+
+  const statusBadge =
+    (
+      value: string
+    ) => {
+
+      if (
+        value ===
+        STATUS_DITERIMA
+      ) {
+
+        return "bg-green-100 text-green-800";
+
+      }
+
+
+      if (
+        value ===
+        STATUS_TIDAK_DITERIMA
+      ) {
+
+        return "bg-red-100 text-red-800";
+
+      }
+
+
+      return "bg-yellow-100 text-yellow-800";
+
+    };
+
+
+  // ==========================================================
+  // RENDER
+  // ==========================================================
 
   return (
 
-    <div className="space-y-6">
+    <div
+      className="space-y-6"
+    >
 
       {/* ======================================================
           HEADER
       ====================================================== */}
 
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
+      <div
+        className="flex flex-col lg:flex-row lg:items-center lg:justify-between"
+      >
 
         <div>
 
-          <h1 className="text-2xl font-bold">
-
+          <h1
+            className="text-2xl font-bold"
+          >
             Barang Masuk
-
           </h1>
+
+          <p
+            className="text-sm text-gray-500 mt-1"
+          >
+            Manage incoming stock by invoice
+          </p>
 
         </div>
 
 
-        <div className="flex flex-wrap gap-3 mt-4 lg:mt-0">
+        <div
+          className="flex flex-wrap gap-3 mt-4 lg:mt-0"
+        >
 
           <Button
             onClick={
               handleAddTransaction
             }
-            className="flex items-center"
           >
 
             <Plus
@@ -1045,22 +1741,16 @@ const BarangMasuk = () => {
 
                 key:
                   "created_at",
+
               },
 
               {
                 header:
-                  "Nomor Transaksi",
+                  "Transaction No",
 
                 key:
                   "transaction_number",
-              },
 
-              {
-                header:
-                  "Supplier",
-
-                key:
-                  "supplier_name",
               },
 
               {
@@ -1069,6 +1759,16 @@ const BarangMasuk = () => {
 
                 key:
                   "invoice_number",
+
+              },
+
+              {
+                header:
+                  "Supplier",
+
+                key:
+                  "supplier_name",
+
               },
 
               {
@@ -1077,6 +1777,7 @@ const BarangMasuk = () => {
 
                 key:
                   "product_name",
+
               },
 
               {
@@ -1085,6 +1786,7 @@ const BarangMasuk = () => {
 
                 key:
                   "product_code",
+
               },
 
               {
@@ -1093,6 +1795,7 @@ const BarangMasuk = () => {
 
                 key:
                   "qty",
+
               },
 
               {
@@ -1101,6 +1804,7 @@ const BarangMasuk = () => {
 
                 key:
                   "total_price",
+
               },
 
               {
@@ -1109,6 +1813,7 @@ const BarangMasuk = () => {
 
                 key:
                   "status",
+
               },
 
             ]}
@@ -1122,13 +1827,8 @@ const BarangMasuk = () => {
           >
 
             <Button
-
               variant="outline"
-
               size="sm"
-
-              className="px-3"
-
             >
 
               <Download
@@ -1150,7 +1850,9 @@ const BarangMasuk = () => {
           SEARCH
       ====================================================== */}
 
-      <div className="w-full max-w-sm">
+      <div
+        className="w-full max-w-sm"
+      >
 
         <Search
 
@@ -1169,7 +1871,7 @@ const BarangMasuk = () => {
           }}
 
           placeholder=
-            "Search transaction..."
+            "Search invoice, product, supplier..."
 
           className="w-full"
 
@@ -1184,11 +1886,11 @@ const BarangMasuk = () => {
 
       {error && (
 
-        <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded">
+        <div
+          className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded"
+        >
 
-          <p>
-            {error}
-          </p>
+          {error}
 
         </div>
 
@@ -1201,7 +1903,9 @@ const BarangMasuk = () => {
 
       {loading && (
 
-        <div className="text-center py-10 text-gray-500">
+        <div
+          className="text-center py-10 text-gray-500"
+        >
 
           Loading transactions...
 
@@ -1215,9 +1919,12 @@ const BarangMasuk = () => {
       ====================================================== */}
 
       {!loading &&
-        transactions.length === 0 && (
+        filteredGroups.length ===
+          0 && (
 
-          <div className="text-center py-10 text-gray-500">
+          <div
+            className="text-center py-10 text-gray-500"
+          >
 
             No transactions found
 
@@ -1227,263 +1934,367 @@ const BarangMasuk = () => {
 
 
       {/* ======================================================
-          TABLE
+          INVOICE GROUP TABLE
       ====================================================== */}
 
       {!loading &&
-        transactions.length > 0 && (
+        filteredGroups.length >
+          0 && (
 
-          <Table>
+          <div
+            className="rounded-lg border overflow-hidden"
+          >
 
-            <TableHeader>
+            <Table>
 
-              <TableRow>
+              <TableHeader>
 
-                <TableCell
-                  className="font-semibold"
-                >
-                  Tanggal
-                </TableCell>
+                <TableRow>
 
-                <TableCell
-                  className="font-semibold"
-                >
-                  Transaction No
-                </TableCell>
-
-                <TableCell
-                  className="font-semibold"
-                >
-                  Supplier
-                </TableCell>
-
-                <TableCell
-                  className="font-semibold"
-                >
-                  Invoice No
-                </TableCell>
-
-                <TableCell
-                  className="font-semibold"
-                >
-                  Product Name
-                </TableCell>
-
-                <TableCell
-                  className="font-semibold"
-                >
-                  Code
-                </TableCell>
-
-                <TableCell
-                  className="text-right font-semibold"
-                >
-                  Qty
-                </TableCell>
-
-                <TableCell
-                  className="text-right font-semibold"
-                >
-                  Total Price
-                </TableCell>
-
-                <TableCell
-                  className="font-semibold"
-                >
-                  Status
-                </TableCell>
-
-                <TableCell
-                  className="text-center font-semibold"
-                >
-                  Actions
-                </TableCell>
-
-              </TableRow>
-
-            </TableHeader>
-
-
-            <TableBody>
-
-              {paginatedTransactions.map(
-                (t) => (
-
-                  <TableRow
-                    key={t.id}
+                  <TableCell
+                    className="font-semibold"
                   >
+                    Tanggal
+                  </TableCell>
 
-                    <TableCell>
+                  <TableCell
+                    className="font-semibold"
+                  >
+                    Invoice
+                  </TableCell>
 
-                      {formatDate(
-                        t.created_at
-                      )}
+                  <TableCell
+                    className="font-semibold"
+                  >
+                    Supplier
+                  </TableCell>
 
-                    </TableCell>
+                  <TableCell
+                    className="font-semibold"
+                  >
+                    Products
+                  </TableCell>
+
+                  <TableCell
+                    className="text-right font-semibold"
+                  >
+                    Total Qty
+                  </TableCell>
+
+                  <TableCell
+                    className="text-right font-semibold"
+                  >
+                    Total
+                  </TableCell>
+
+                  <TableCell
+                    className="font-semibold"
+                  >
+                    Status
+                  </TableCell>
+
+                  <TableCell
+                    className="text-center font-semibold"
+                  >
+                    Actions
+                  </TableCell>
+
+                </TableRow>
+
+              </TableHeader>
 
 
-                    <TableCell
-                      className="font-medium"
+              <TableBody>
+
+                {paginatedGroups.map(
+                  (
+                    group
+                  ) => (
+
+                    <TableRow
+                      key={
+                        group.groupKey
+                      }
+                      className=
+                        "align-top"
                     >
 
-                      {
-                        t.transaction_number
-                      }
+                      {/* DATE */}
 
-                    </TableCell>
+                      <TableCell>
 
+                        {formatDate(
+                          group.created_at
+                        )}
 
-                    <TableCell>
-
-                      {
-                        t.supplier_name ||
-                        "-"
-                      }
-
-                    </TableCell>
+                      </TableCell>
 
 
-                    <TableCell>
+                      {/* INVOICE */}
 
-                      {
-                        t.invoice_number ||
-                        "-"
-                      }
+                      <TableCell>
 
-                    </TableCell>
+                        <div
+                          className="font-semibold"
+                        >
 
+                          {
+                            group.invoice_number ||
+                            "-"
+                          }
 
-                    <TableCell>
-
-                      {
-                        t.product_name ||
-                        "-"
-                      }
-
-                    </TableCell>
+                        </div>
 
 
-                    <TableCell>
+                        <div
+                          className="text-xs text-gray-500"
+                        >
 
-                      {
-                        t.product_code ||
-                        "-"
-                      }
+                          {
+                            group.transaction_number
+                          }
 
-                    </TableCell>
+                        </div>
 
-
-                    <TableCell
-                      className="text-right"
-                    >
-
-                      {Number(
-                        t.qty || 0
-                      ).toLocaleString()}
-
-                    </TableCell>
+                      </TableCell>
 
 
-                    <TableCell
-                      className="text-right"
-                    >
+                      {/* SUPPLIER */}
 
-                      Rp{" "}
-
-                      {Number(
-                        t.total_price ||
-                        0
-                      ).toLocaleString()}
-
-                    </TableCell>
-
-
-                    <TableCell>
-
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          t.status ===
-                          STATUS_DITERIMA
-
-                            ? "bg-green-100 text-green-800"
-
-                            : t.status ===
-                              STATUS_TIDAK_DITERIMA
-
-                            ? "bg-red-100 text-red-800"
-
-                            : "bg-yellow-100 text-yellow-800"
-                        }`}
-                      >
+                      <TableCell>
 
                         {
-                          t.status
+                          group.supplier_name ||
+                          "-"
                         }
 
-                      </span>
-
-                    </TableCell>
+                      </TableCell>
 
 
-                    <TableCell
-                      className="flex justify-center space-x-2"
-                    >
+                      {/* PRODUCTS */}
 
-                      <Button
+                      <TableCell>
 
-                        variant="outline"
+                        <div
+                          className="space-y-2 min-w-[320px]"
+                        >
 
-                        size="sm"
+                          {group.items.map(
+                            (
+                              item
+                            ) => (
 
-                        onClick={() =>
-                          handleEditTransaction(
-                            t
-                          )
-                        }
+                              <div
+                                key={
+                                  item.id
+                                }
+                                className="flex items-center justify-between gap-4 border-b last:border-b-0 pb-2 last:pb-0"
+                              >
 
-                        className="px-3"
+                                <div>
 
+                                  <div
+                                    className="font-medium"
+                                  >
+
+                                    {
+                                      item.product_name ||
+                                      "-"
+                                    }
+
+                                  </div>
+
+
+                                  <div
+                                    className="text-xs text-gray-500"
+                                  >
+
+                                    {
+                                      item.product_code ||
+                                      "-"
+                                    }
+
+                                  </div>
+
+                                </div>
+
+
+                                <div
+                                  className="text-right whitespace-nowrap"
+                                >
+
+                                  <div
+                                    className="font-medium"
+                                  >
+
+                                    {formatNumber(
+                                      Number(
+                                        item.qty ||
+                                          0
+                                      )
+                                    )}
+
+                                  </div>
+
+
+                                  <div
+                                    className="text-xs text-gray-500"
+                                  >
+
+                                    Rp{" "}
+
+                                    {formatNumber(
+                                      Number(
+                                        item.total_price ||
+                                          0
+                                      )
+                                    )}
+
+                                  </div>
+
+                                </div>
+
+                              </div>
+
+                            )
+                          )}
+
+                        </div>
+
+                      </TableCell>
+
+
+                      {/* TOTAL QTY */}
+
+                      <TableCell
+                        className="text-right font-semibold"
                       >
 
-                        <Edit3
-                          className="h-4 w-4"
-                        />
+                        {formatNumber(
+                          group.total_qty
+                        )}
 
-                      </Button>
+                      </TableCell>
 
 
-                      <Button
+                      {/* TOTAL PRICE */}
 
-                        variant="destructive"
-
-                        size="sm"
-
-                        onClick={() =>
-                          handleDeleteTransaction(
-                            t.id
-                          )
-                        }
-
-                        className="px-3"
-
+                      <TableCell
+                        className="text-right font-semibold whitespace-nowrap"
                       >
 
-                        <Trash2
-                          className="h-4 w-4"
-                        />
+                        Rp{" "}
 
-                      </Button>
+                        {formatNumber(
+                          group.total_price
+                        )}
 
-                    </TableCell>
+                      </TableCell>
 
-                  </TableRow>
 
-                )
-              )}
+                      {/* STATUS */}
 
-            </TableBody>
+                      <TableCell>
 
-          </Table>
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${statusBadge(
+                            group.status
+                          )}`}
+                        >
+
+                          {
+                            group.status
+                          }
+
+                        </span>
+
+                      </TableCell>
+
+
+                      {/* ACTIONS */}
+
+                      <TableCell>
+
+                        <div
+                          className="flex flex-col gap-2"
+                        >
+
+                          {group.items.map(
+                            (
+                              item
+                            ) => (
+
+                              <div
+                                key={
+                                  item.id
+                                }
+                                className="flex gap-2"
+                              >
+
+                                <Button
+
+                                  variant="outline"
+
+                                  size="sm"
+
+                                  onClick={() =>
+                                    handleEditTransaction(
+                                      item
+                                    )
+                                  }
+
+                                  title={`Edit ${item.product_name}`}
+
+                                >
+
+                                  <Edit3
+                                    className="h-4 w-4"
+                                  />
+
+                                </Button>
+
+
+                                <Button
+
+                                  variant="destructive"
+
+                                  size="sm"
+
+                                  onClick={() =>
+                                    handleDeleteTransaction(
+                                      item.id
+                                    )
+                                  }
+
+                                  title={`Delete ${item.product_name}`}
+
+                                >
+
+                                  <Trash2
+                                    className="h-4 w-4"
+                                  />
+
+                                </Button>
+
+                              </div>
+
+                            )
+                          )}
+
+                        </div>
+
+                      </TableCell>
+
+                    </TableRow>
+
+                  )
+                )}
+
+              </TableBody>
+
+            </Table>
+
+          </div>
 
         )}
 
@@ -1493,7 +2304,8 @@ const BarangMasuk = () => {
       ====================================================== */}
 
       {!loading &&
-        transactions.length > 0 && (
+        filteredGroups.length >
+          0 && (
 
           <Pagination>
 
@@ -1505,9 +2317,12 @@ const BarangMasuk = () => {
 
                   onClick={() =>
                     setPage(
-                      (p) =>
+                      (
+                        current
+                      ) =>
                         Math.max(
-                          p - 1,
+                          current -
+                            1,
                           1
                         )
                     )
@@ -1522,27 +2337,38 @@ const BarangMasuk = () => {
                 length:
                   totalPages,
               }).map(
-                (_, i) => (
+                (
+                  _,
+                  index
+                ) => (
 
                   <PaginationItem
-                    key={i}
+                    key={
+                      index
+                    }
                   >
 
                     <PaginationLink
 
                       isActive={
-                        i + 1 === page
+                        page ===
+                        index +
+                          1
                       }
 
                       onClick={() =>
                         setPage(
-                          i + 1
+                          index +
+                            1
                         )
                       }
 
                     >
 
-                      {i + 1}
+                      {
+                        index +
+                        1
+                      }
 
                     </PaginationLink>
 
@@ -1558,9 +2384,12 @@ const BarangMasuk = () => {
 
                   onClick={() =>
                     setPage(
-                      (p) =>
+                      (
+                        current
+                      ) =>
                         Math.min(
-                          p + 1,
+                          current +
+                            1,
                           totalPages
                         )
                     )
@@ -1578,7 +2407,7 @@ const BarangMasuk = () => {
 
 
       {/* ======================================================
-          DIALOG
+          ADD / EDIT DIALOG
       ====================================================== */}
 
       <Dialog
@@ -1594,29 +2423,31 @@ const BarangMasuk = () => {
       >
 
         <DialogContent
-          className="w-full max-w-lg"
+          className="w-full max-w-5xl max-h-[90vh] overflow-y-auto"
         >
 
           <DialogHeader>
 
             <DialogTitle>
 
-              {
-                dialogMode ===
-                "add"
+              {dialogMode ===
+              "add"
 
-                  ? "Add Barang Masuk"
+                ? "Add Barang Masuk"
 
-                  : "Edit Barang Masuk"
-              }
+                : "Edit Barang Masuk"}
 
             </DialogTitle>
 
 
             <DialogDescription>
 
-              Fill in transaction
-              details below
+              {dialogMode ===
+              "add"
+
+                ? "Add multiple products to the same invoice."
+
+                : "Edit this product line. Stock synchronization is handled by Supabase."}
 
             </DialogDescription>
 
@@ -1624,22 +2455,21 @@ const BarangMasuk = () => {
 
 
           <form
-
             onSubmit={
               handleSubmit
             }
-
-            className="space-y-4"
-
+            className="space-y-5"
           >
 
             {/* ==================================================
-                TRANSACTION + INVOICE
+                HEADER
             ================================================== */}
 
             <div
-              className="grid grid-cols-2 gap-4"
+              className="grid grid-cols-1 md:grid-cols-3 gap-4"
             >
+
+              {/* TRANSACTION */}
 
               <div>
 
@@ -1655,7 +2485,7 @@ const BarangMasuk = () => {
                 <Input
 
                   value={
-                    formData.transaction_number
+                    transactionNumber
                   }
 
                   onChange={(e) => {
@@ -1680,14 +2510,9 @@ const BarangMasuk = () => {
                     }
 
 
-                    setFormData({
-
-                      ...formData,
-
-                      transaction_number:
-                        value,
-
-                    });
+                    setTransactionNumber(
+                      value
+                    );
 
                   }}
 
@@ -1698,13 +2523,15 @@ const BarangMasuk = () => {
               </div>
 
 
+              {/* INVOICE */}
+
               <div>
 
                 <label
                   className="block text-sm font-medium mb-1"
                 >
 
-                  Invoice No
+                  Invoice No *
 
                 </label>
 
@@ -1712,22 +2539,52 @@ const BarangMasuk = () => {
                 <Input
 
                   value={
-                    formData.invoice_number
+                    invoiceNumber
                   }
 
                   onChange={(e) =>
-                    setFormData({
-
-                      ...formData,
-
-                      invoice_number:
-                        e.target.value,
-
-                    })
+                    setInvoiceNumber(
+                      e.target.value
+                    )
                   }
 
                   placeholder=
-                    "Invoice number"
+                    "INV-001"
+
+                  required
+
+                />
+
+              </div>
+
+
+              {/* SUPPLIER */}
+
+              <div>
+
+                <label
+                  className="block text-sm font-medium mb-1"
+                >
+
+                  Supplier
+
+                </label>
+
+
+                <Input
+
+                  value={
+                    supplierName
+                  }
+
+                  onChange={(e) =>
+                    setSupplierName(
+                      e.target.value
+                    )
+                  }
+
+                  placeholder=
+                    "Supplier name"
 
                 />
 
@@ -1737,238 +2594,490 @@ const BarangMasuk = () => {
 
 
             {/* ==================================================
-                SUPPLIER
+                PRODUCT LINES
             ================================================== */}
 
             <div>
 
-              <label
-                className="block text-sm font-medium mb-1"
+              <div
+                className="flex items-center justify-between mb-3"
               >
 
-                Supplier Name
+                <div>
 
-              </label>
+                  <h3
+                    className="font-semibold"
+                  >
 
+                    Products
 
-              <Input
+                  </h3>
 
-                value={
-                  formData.supplier_name
-                }
+                  <p
+                    className="text-xs text-gray-500"
+                  >
 
-                onChange={(e) =>
-                  setFormData({
+                    Add multiple products to this invoice.
 
-                    ...formData,
+                  </p>
 
-                    supplier_name:
-                      e.target.value,
-
-                  })
-                }
-
-                placeholder=
-                  "Supplier name"
-
-              />
-
-            </div>
+                </div>
 
 
-            {/* ==================================================
-                PRODUCT
-            ================================================== */}
+                {dialogMode ===
+                  "add" && (
 
-            <div>
+                  <Button
 
-              <label
-                className="block text-sm font-medium mb-1"
+                    type="button"
+
+                    variant="outline"
+
+                    onClick={
+                      addProductLine
+                    }
+
+                  >
+
+                    <Plus
+                      className="mr-2 h-4 w-4"
+                    />
+
+                    Add Product
+
+                  </Button>
+
+                )}
+
+              </div>
+
+
+              {/* PRODUCT ROWS */}
+
+              <div
+                className="space-y-3"
               >
 
-                Select Product
+                {productLines.map(
+                  (
+                    line,
+                    index
+                  ) => (
 
-              </label>
+                    <div
+                      key={
+                        line.tempId
+                      }
+                      className="border rounded-lg p-4"
+                    >
+
+                      <div
+                        className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end"
+                      >
+
+                        {/* PRODUCT */}
+
+                        <div
+                          className="md:col-span-5"
+                        >
+
+                          <label
+                            className="block text-sm font-medium mb-1"
+                          >
+
+                            Product{" "}
+
+                            {index +
+                              1}
+
+                          </label>
 
 
-              <Select
+                          <Select
 
-                value={
-                  formData.product_id
-                }
+                            value={
+                              line.product_id
+                            }
 
-                onValueChange={
-                  handleProductChange
-                }
+                            onValueChange={(
+                              value
+                            ) =>
+                              changeProductLine(
+                                line.tempId,
+                                value
+                              )
+                            }
 
-              >
+                          >
 
-                <SelectTrigger
-                  className="w-full"
-                >
+                            <SelectTrigger>
 
-                  <SelectValue
-                    placeholder=
-                      "Choose a product"
-                  />
+                              <SelectValue
+                                placeholder=
+                                  "Choose product"
+                              />
 
-                </SelectTrigger>
+                            </SelectTrigger>
 
 
-                <SelectContent>
+                            <SelectContent>
 
-                  {products.map(
-                    (p) => (
+                              {products.map(
+                                (
+                                  product
+                                ) => (
 
-                      <SelectItem
+                                  <SelectItem
 
-                        key={
-                          p.id
-                        }
+                                    key={
+                                      product.id
+                                    }
 
-                        value={
-                          p.id
+                                    value={
+                                      product.id
+                                    }
+
+                                  >
+
+                                    {
+                                      product.code
+                                    }
+
+                                    {" - "}
+
+                                    {
+                                      product.description
+                                    }
+
+                                    {" | Stock: "}
+
+                                    {
+                                      formatNumber(
+                                        Number(
+                                          product.qty ||
+                                            0
+                                        )
+                                      )
+                                    }
+
+                                  </SelectItem>
+
+                                )
+                              )}
+
+                            </SelectContent>
+
+                          </Select>
+
+                        </div>
+
+
+                        {/* QTY */}
+
+                        <div
+                          className="md:col-span-2"
+                        >
+
+                          <label
+                            className="block text-sm font-medium mb-1"
+                          >
+
+                            Qty
+
+                          </label>
+
+
+                          <Input
+
+                            type="number"
+
+                            min="1"
+
+                            value={
+                              line.qty
+                            }
+
+                            onChange={(e) =>
+                              changeProductQty(
+                                line.tempId,
+                                Number(
+                                  e.target.value
+                                )
+                              )
+                            }
+
+                          />
+
+                        </div>
+
+
+                        {/* PRICE */}
+
+                        <div
+                          className="md:col-span-2"
+                        >
+
+                          <label
+                            className="block text-sm font-medium mb-1"
+                          >
+
+                            Price
+
+                          </label>
+
+
+                          <Input
+
+                            type="number"
+
+                            min="0"
+
+                            value={
+                              line.price
+                            }
+
+                            onChange={(e) =>
+                              changeProductPrice(
+                                line.tempId,
+                                Number(
+                                  e.target.value
+                                )
+                              )
+                            }
+
+                          />
+
+                        </div>
+
+
+                        {/* TOTAL */}
+
+                        <div
+                          className="md:col-span-2"
+                        >
+
+                          <label
+                            className="block text-sm font-medium mb-1"
+                          >
+
+                            Total
+
+                          </label>
+
+
+                          <Input
+
+                            value={formatNumber(
+                              line.total_price
+                            )}
+
+                            disabled
+
+                            className=
+                              "bg-gray-100"
+
+                          />
+
+                        </div>
+
+
+                        {/* REMOVE */}
+
+                        <div
+                          className="md:col-span-1"
+                        >
+
+                          {dialogMode ===
+                            "add" && (
+
+                            <Button
+
+                              type="button"
+
+                              variant="destructive"
+
+                              size="icon"
+
+                              onClick={() =>
+                                removeProductLine(
+                                  line.tempId
+                                )
+                              }
+
+                              title="Remove product"
+
+                            >
+
+                              <X
+                                className="h-4 w-4"
+                              />
+
+                            </Button>
+
+                          )}
+
+                        </div>
+
+                      </div>
+
+
+                      {/* PRODUCT INFO */}
+
+                      {line.product_id && (
+
+                        <div
+                          className="mt-3 text-xs text-gray-500"
+                        >
+
+                          Code:{" "}
+
+                          {
+                            line.product_code ||
+                            "-"
+                          }
+
+                          {" | "}
+
+                          Product:{" "}
+
+                          {
+                            line.product_name ||
+                            "-"
+                          }
+
+                        </div>
+
+                      )}
+
+                    </div>
+
+                  )
+                )}
+
+
+                {/* EMPTY */}
+
+                {productLines.length ===
+                  0 && (
+
+                  <div
+                    className="border border-dashed rounded-lg p-8 text-center text-gray-500"
+                  >
+
+                    No products added yet.
+
+                    <div
+                      className="mt-3"
+                    >
+
+                      <Button
+
+                        type="button"
+
+                        variant="outline"
+
+                        onClick={
+                          addProductLine
                         }
 
                       >
 
-                        {
-                          p.code
-                        }
+                        <Plus
+                          className="mr-2 h-4 w-4"
+                        />
 
-                        {" - "}
+                        Add First Product
 
-                        {
-                          p.description
-                        }
+                      </Button>
 
-                        {" (Stock: "}
+                    </div>
 
-                        {
-                          Number(
-                            p.qty || 0
-                          ).toLocaleString()
-                        }
+                  </div>
 
-                        {")"}
+                )}
 
-                      </SelectItem>
-
-                    )
-                  )}
-
-                </SelectContent>
-
-              </Select>
+              </div>
 
             </div>
 
 
             {/* ==================================================
-                QTY / PRICE / TOTAL
+                SUMMARY
             ================================================== */}
 
             <div
-              className="grid grid-cols-3 gap-4"
+              className="rounded-lg bg-gray-50 border p-4"
             >
 
-              <div>
+              <div
+                className="grid grid-cols-2 md:grid-cols-4 gap-4"
+              >
 
-                <label
-                  className="block text-sm font-medium mb-1"
+                <div>
+
+                  <div
+                    className="text-xs text-gray-500"
+                  >
+                    Product Lines
+                  </div>
+
+                  <div
+                    className="text-lg font-semibold"
+                  >
+
+                    {
+                      productLines.length
+                    }
+
+                  </div>
+
+                </div>
+
+
+                <div>
+
+                  <div
+                    className="text-xs text-gray-500"
+                  >
+                    Total Qty
+                  </div>
+
+                  <div
+                    className="text-lg font-semibold"
+                  >
+
+                    {formatNumber(
+                      invoiceTotalQty
+                    )}
+
+                  </div>
+
+                </div>
+
+
+                <div
+                  className="md:col-span-2"
                 >
 
-                  Qty *
+                  <div
+                    className="text-xs text-gray-500"
+                  >
+                    Invoice Total
+                  </div>
 
-                </label>
+                  <div
+                    className="text-lg font-semibold"
+                  >
 
+                    Rp{" "}
 
-                <Input
+                    {formatNumber(
+                      invoiceTotalPrice
+                    )}
 
-                  type="number"
+                  </div>
 
-                  min="0"
-
-                  value={
-                    formData.qty
-                  }
-
-                  onChange={(e) =>
-                    handleQtyChange(
-                      Number(
-                        e.target.value
-                      ) || 0
-                    )
-                  }
-
-                  required
-
-                />
-
-              </div>
-
-
-              <div>
-
-                <label
-                  className="block text-sm font-medium mb-1"
-                >
-
-                  Price *
-
-                </label>
-
-
-                <Input
-
-                  type="number"
-
-                  min="0"
-
-                  value={
-                    formData.price
-                  }
-
-                  onChange={(e) =>
-                    handlePriceChange(
-                      Number(
-                        e.target.value
-                      ) || 0
-                    )
-                  }
-
-                  required
-
-                />
-
-              </div>
-
-
-              <div>
-
-                <label
-                  className="block text-sm font-medium mb-1"
-                >
-
-                  Total Price
-
-                </label>
-
-
-                <Input
-
-                  type="number"
-
-                  value={
-                    formData.total_price
-                  }
-
-                  disabled
-
-                  className=
-                    "bg-gray-100"
-
-                />
+                </div>
 
               </div>
 
@@ -1993,30 +3102,18 @@ const BarangMasuk = () => {
               <Select
 
                 value={
-                  formData.status
+                  status
                 }
 
-                onValueChange={(val) =>
-                  setFormData({
-
-                    ...formData,
-
-                    status:
-                      val,
-
-                  })
+                onValueChange={
+                  setStatus
                 }
 
               >
 
-                <SelectTrigger
-                  className="w-full"
-                >
+                <SelectTrigger>
 
-                  <SelectValue
-                    placeholder=
-                      "Status"
-                  />
+                  <SelectValue />
 
                 </SelectTrigger>
 
@@ -2063,11 +3160,46 @@ const BarangMasuk = () => {
 
 
             {/* ==================================================
-                BUTTON
+                NOTES
+            ================================================== */}
+
+            <div>
+
+              <label
+                className="block text-sm font-medium mb-1"
+              >
+
+                Notes
+
+              </label>
+
+
+              <Input
+
+                value={
+                  notes
+                }
+
+                onChange={(e) =>
+                  setNotes(
+                    e.target.value
+                  )
+                }
+
+                placeholder=
+                  "Optional notes"
+
+              />
+
+            </div>
+
+
+            {/* ==================================================
+                BUTTONS
             ================================================== */}
 
             <div
-              className="flex justify-end space-x-3 pt-4"
+              className="flex justify-end gap-3 pt-4"
             >
 
               <Button
@@ -2093,14 +3225,12 @@ const BarangMasuk = () => {
                 type="submit"
               >
 
-                {
-                  dialogMode ===
-                  "add"
+                {dialogMode ===
+                "add"
 
-                    ? "Add Transaction"
+                  ? "Save Invoice"
 
-                    : "Update Transaction"
-                }
+                  : "Update Product"}
 
               </Button>
 
