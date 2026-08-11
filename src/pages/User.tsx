@@ -76,35 +76,23 @@ const User = () => {
   // DATA
   // ==========================================================
 
-  const [users, setUsers] =
-    useState<UserItem[]>([]);
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [error, setError] =
-    useState<string | null>(null);
+  const [users, setUsers] = useState<UserItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // ==========================================================
   // SEARCH / FILTER
   // ==========================================================
 
-  const [searchTerm, setSearchTerm] =
-    useState("");
-
-  const [roleFilter, setRoleFilter] =
-    useState("all");
-
-  const [statusFilter, setStatusFilter] =
-    useState("all");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   // ==========================================================
   // DIALOG
   // ==========================================================
 
-  const [dialogOpen, setDialogOpen] =
-    useState(false);
-
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] =
     useState<"add" | "edit">("add");
 
@@ -112,40 +100,41 @@ const User = () => {
   // FORM
   // ==========================================================
 
-  const [formData, setFormData] =
-    useState({
-      username: "",
-      email: "",
-      role: "staff",
-      status: "active",
-    });
+  const [formData, setFormData] = useState({
+    username: "",
+    email: "",
+    role: "staff",
+    status: "active",
+  });
 
-  const [newPassword, setNewPassword] =
-    useState("");
+  // ==========================================================
+  // PASSWORD
+  // ==========================================================
 
-  const [confirmPassword, setConfirmPassword] =
-    useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
-  const [showPassword, setShowPassword] =
-    useState(false);
-
+  const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] =
     useState(false);
 
-  const [editingId, setEditingId] =
-    useState<string | null>(null);
+  // ==========================================================
+  // EDITING
+  // ==========================================================
+
+  const [editingId, setEditingId] = useState<string | null>(
+    null
+  );
 
   // ==========================================================
   // PAGINATION
   // ==========================================================
 
-  const [page, setPage] =
-    useState(1);
+  const [page, setPage] = useState(1);
 
   const rowsPerPage = 10;
 
-  const { toast } =
-    useToast();
+  const { toast } = useToast();
 
   // ==========================================================
   // FETCH USERS
@@ -168,12 +157,14 @@ const User = () => {
       // SEARCH
 
       if (searchTerm.trim()) {
+        const search = searchTerm.trim();
+
         query = query.or(
-          `username.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`
+          `username.ilike.%${search}%,email.ilike.%${search}%`
         );
       }
 
-      // ROLE
+      // ROLE FILTER
 
       if (
         roleFilter &&
@@ -185,7 +176,7 @@ const User = () => {
         );
       }
 
-      // STATUS
+      // STATUS FILTER
 
       if (
         statusFilter &&
@@ -210,10 +201,7 @@ const User = () => {
         (data || []) as UserItem[]
       );
 
-      // Reset page if current page
-      // is no longer available
-
-      const total =
+      const totalPages =
         Math.ceil(
           (data?.length || 0) /
             rowsPerPage
@@ -222,7 +210,7 @@ const User = () => {
       setPage((currentPage) =>
         Math.min(
           currentPage,
-          total
+          totalPages
         )
       );
     } catch (err: any) {
@@ -243,7 +231,7 @@ const User = () => {
   };
 
   // ==========================================================
-  // INITIAL / FILTER FETCH
+  // FETCH WHEN SEARCH / FILTER CHANGES
   // ==========================================================
 
   useEffect(() => {
@@ -283,7 +271,6 @@ const User = () => {
     resetForm();
 
     setDialogMode("add");
-
     setDialogOpen(true);
   };
 
@@ -291,27 +278,18 @@ const User = () => {
   // EDIT USER
   // ==========================================================
 
-  const handleEditUser = (
-    user: UserItem
-  ) => {
+  const handleEditUser = (user: UserItem) => {
     setDialogMode("edit");
 
     setFormData({
-      username:
-        user.username || "",
-
-      email:
-        user.email || "",
-
-      role:
-        user.role || "staff",
-
-      status:
-        user.status || "active",
+      username: user.username || "",
+      email: user.email || "",
+      role: user.role || "staff",
+      status: user.status || "active",
     });
 
-    // Password selalu kosong
-    // Kita tidak pernah mengambil password lama
+    // Password selalu dikosongkan.
+    // Password lama TIDAK pernah diambil.
 
     setNewPassword("");
     setConfirmPassword("");
@@ -334,13 +312,12 @@ const User = () => {
     const {
       data,
       error,
-    } =
-      await supabase.functions.invoke(
-        "admin-user",
-        {
-          body: payload,
-        }
-      );
+    } = await supabase.functions.invoke(
+      "admin-user",
+      {
+        body: payload,
+      }
+    );
 
     if (error) {
       throw error;
@@ -366,12 +343,13 @@ const User = () => {
   const handleDeleteUser = async (
     id: string
   ) => {
-    const user =
-      users.find(
-        (u) => u.id === id
-      );
+    const user = users.find(
+      (u) => u.id === id
+    );
 
-    if (!user) return;
+    if (!user) {
+      return;
+    }
 
     const confirmed =
       window.confirm(
@@ -426,7 +404,7 @@ const User = () => {
     e.preventDefault();
 
     // ========================================================
-    // VALIDATE USERNAME
+    // USERNAME
     // ========================================================
 
     const username =
@@ -445,7 +423,7 @@ const User = () => {
     }
 
     // ========================================================
-    // VALIDATE EMAIL
+    // EMAIL
     // ========================================================
 
     const email =
@@ -464,7 +442,7 @@ const User = () => {
     }
 
     // ========================================================
-    // PASSWORD VALIDATION
+    // PASSWORD
     // ========================================================
 
     if (
@@ -472,7 +450,8 @@ const User = () => {
       !newPassword
     ) {
       toast({
-        title: "Password required",
+        title:
+          "Password required",
         description:
           "New user must have a password.",
         variant:
@@ -481,6 +460,9 @@ const User = () => {
 
       return;
     }
+
+    // Password hanya divalidasi
+    // kalau diisi.
 
     if (newPassword) {
       if (
@@ -514,6 +496,10 @@ const User = () => {
         return;
       }
     }
+
+    // ========================================================
+    // SAVE
+    // ========================================================
 
     try {
       setLoading(true);
@@ -560,7 +546,10 @@ const User = () => {
           );
         }
 
-        await callAdminUser({
+        const payload: Record<
+          string,
+          unknown
+        > = {
           action: "update",
 
           user_id:
@@ -575,12 +564,23 @@ const User = () => {
 
           status:
             formData.status,
+        };
 
-          // Password optional
-          password:
-            newPassword ||
-            undefined,
-        });
+        // ====================================================
+        // PASSWORD HANYA DIKIRIM
+        // JIKA USER MEMASUKKAN PASSWORD BARU
+        // ====================================================
+
+        if (
+          newPassword.trim()
+        ) {
+          payload.password =
+            newPassword;
+        }
+
+        await callAdminUser(
+          payload
+        );
 
         toast({
           title: "Success",
@@ -633,7 +633,6 @@ const User = () => {
     users.slice(
       (page - 1) *
         rowsPerPage,
-
       page *
         rowsPerPage
     );
@@ -663,9 +662,9 @@ const User = () => {
   return (
     <div className="space-y-6">
 
-      {/* =====================================================
+      {/* ====================================================
           HEADER
-      ===================================================== */}
+      ==================================================== */}
 
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
 
@@ -734,9 +733,9 @@ const User = () => {
         </div>
       </div>
 
-      {/* =====================================================
+      {/* ====================================================
           FILTER
-      ===================================================== */}
+      ==================================================== */}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
@@ -817,40 +816,33 @@ const User = () => {
 
       </div>
 
-      {/* =====================================================
+      {/* ====================================================
           ERROR
-      ===================================================== */}
+      ==================================================== */}
 
       {error && (
         <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded">
-
-          <p>
-            {error}
-          </p>
-
+          <p>{error}</p>
         </div>
       )}
 
-      {/* =====================================================
+      {/* ====================================================
           EMPTY
-      ===================================================== */}
+      ==================================================== */}
 
       {!loading &&
         users.length === 0 && (
           <div className="text-center py-10 text-gray-500">
-
             No users found
-
           </div>
         )}
 
-      {/* =====================================================
+      {/* ====================================================
           TABLE
-      ===================================================== */}
+      ==================================================== */}
 
       {!loading &&
         users.length > 0 && (
-
           <Table>
 
             <TableHeader>
@@ -941,6 +933,7 @@ const User = () => {
                     <TableCell className="flex justify-center space-x-2">
 
                       <Button
+                        type="button"
                         variant="outline"
                         size="sm"
                         onClick={() =>
@@ -950,12 +943,11 @@ const User = () => {
                         }
                         className="px-3"
                       >
-
                         <Edit3 className="h-4 w-4" />
-
                       </Button>
 
                       <Button
+                        type="button"
                         variant="destructive"
                         size="sm"
                         onClick={() =>
@@ -965,9 +957,7 @@ const User = () => {
                         }
                         className="px-3"
                       >
-
                         <Trash2 className="h-4 w-4" />
-
                       </Button>
 
                     </TableCell>
@@ -980,16 +970,14 @@ const User = () => {
             </TableBody>
 
           </Table>
-
         )}
 
-      {/* =====================================================
+      {/* ====================================================
           PAGINATION
-      ===================================================== */}
+      ==================================================== */}
 
       {!loading &&
         users.length > 0 && (
-
           <Pagination>
 
             <PaginationContent>
@@ -1058,19 +1046,24 @@ const User = () => {
             </PaginationContent>
 
           </Pagination>
-
         )}
 
-      {/* =====================================================
+      {/* ====================================================
           ADD / EDIT DIALOG
-      ===================================================== */}
+      ==================================================== */}
 
       <Dialog
         open={
           dialogOpen
         }
         onOpenChange={
-          setDialogOpen
+          (open) => {
+            setDialogOpen(open);
+
+            if (!open) {
+              resetForm();
+            }
+          }
         }
       >
 
@@ -1105,7 +1098,9 @@ const User = () => {
             className="space-y-4 mt-2"
           >
 
-            {/* USERNAME */}
+            {/* =================================================
+                USERNAME
+            ================================================= */}
 
             <div>
 
@@ -1133,7 +1128,9 @@ const User = () => {
 
             </div>
 
-            {/* EMAIL */}
+            {/* =================================================
+                EMAIL
+            ================================================= */}
 
             <div>
 
@@ -1162,7 +1159,9 @@ const User = () => {
 
             </div>
 
-            {/* PASSWORD */}
+            {/* =================================================
+                PASSWORD
+            ================================================= */}
 
             <div>
 
@@ -1199,14 +1198,14 @@ const User = () => {
                   placeholder={
                     dialogMode ===
                     "add"
-                      ? "Minimum 8 characters"
+                      ? "Enter password"
                       : "Leave blank to keep current password"
                   }
-                  minLength={8}
                   required={
                     dialogMode ===
                     "add"
                   }
+                  autoComplete="new-password"
                   className="pr-10"
                 />
 
@@ -1214,10 +1213,16 @@ const User = () => {
                   type="button"
                   onClick={() =>
                     setShowPassword(
-                      (v) => !v
+                      (value) =>
+                        !value
                     )
                   }
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  aria-label={
+                    showPassword
+                      ? "Hide password"
+                      : "Show password"
+                  }
                 >
 
                   {showPassword ? (
@@ -1230,9 +1235,18 @@ const User = () => {
 
               </div>
 
+              {dialogMode ===
+                "edit" && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Isi hanya jika ingin mengganti password.
+                </p>
+              )}
+
             </div>
 
-            {/* CONFIRM PASSWORD */}
+            {/* =================================================
+                CONFIRM PASSWORD
+            ================================================= */}
 
             <div>
 
@@ -1258,12 +1272,12 @@ const User = () => {
                     )
                   }
                   placeholder="Confirm password"
-                  minLength={8}
                   required={
                     dialogMode ===
                       "add" ||
                     !!newPassword
                   }
+                  autoComplete="new-password"
                   className="pr-10"
                 />
 
@@ -1271,10 +1285,16 @@ const User = () => {
                   type="button"
                   onClick={() =>
                     setShowConfirmPassword(
-                      (v) => !v
+                      (value) =>
+                        !value
                     )
                   }
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  aria-label={
+                    showConfirmPassword
+                      ? "Hide confirmation password"
+                      : "Show confirmation password"
+                  }
                 >
 
                   {showConfirmPassword ? (
@@ -1289,7 +1309,9 @@ const User = () => {
 
             </div>
 
-            {/* ROLE */}
+            {/* =================================================
+                ROLE
+            ================================================= */}
 
             <div>
 
@@ -1302,12 +1324,13 @@ const User = () => {
                   formData.role
                 }
                 onValueChange={(
-                  val
+                  value
                 ) =>
                   setFormData(
                     (prev) => ({
                       ...prev,
-                      role: val,
+                      role:
+                        value,
                     })
                   )
                 }
@@ -1339,7 +1362,9 @@ const User = () => {
 
             </div>
 
-            {/* STATUS */}
+            {/* =================================================
+                STATUS
+            ================================================= */}
 
             <div>
 
@@ -1352,12 +1377,13 @@ const User = () => {
                   formData.status
                 }
                 onValueChange={(
-                  val
+                  value
                 ) =>
                   setFormData(
                     (prev) => ({
                       ...prev,
-                      status: val,
+                      status:
+                        value,
                     })
                   )
                 }
@@ -1385,7 +1411,9 @@ const User = () => {
 
             </div>
 
-            {/* BUTTON */}
+            {/* =================================================
+                BUTTON
+            ================================================= */}
 
             <div className="flex justify-end space-x-3 pt-4">
 
@@ -1427,4 +1455,3 @@ const User = () => {
 };
 
 export default User;
-```
