@@ -1,11 +1,23 @@
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
 
-import { supabase } from "@/integrations/supabase/client";
+import {
+  supabase,
+} from "@/integrations/supabase/client";
 
-import { useToast } from "@/components/ui/use-toast";
+import {
+  useToast,
+} from "@/components/ui/use-toast";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import {
+  Button,
+} from "@/components/ui/button";
+
+import {
+  Input,
+} from "@/components/ui/input";
 
 import {
   Select,
@@ -40,7 +52,9 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 
-import { Search } from "@/components/ui/search";
+import {
+  Search,
+} from "@/components/ui/search";
 
 import {
   Trash2,
@@ -52,7 +66,9 @@ import {
   KeyRound,
 } from "lucide-react";
 
-import { XlsxTable } from "@/components/ui/xlsx-table";
+import {
+  XlsxTable,
+} from "@/components/ui/xlsx-table";
 
 // ============================================================
 // TYPE
@@ -86,7 +102,7 @@ const User = () => {
     useState<string | null>(null);
 
   // ==========================================================
-  // SEARCH / FILTER
+  // SEARCH
   // ==========================================================
 
   const [searchTerm, setSearchTerm] =
@@ -133,8 +149,10 @@ const User = () => {
   const [showPassword, setShowPassword] =
     useState(false);
 
-  const [showConfirmPassword, setShowConfirmPassword] =
-    useState(false);
+  const [
+    showConfirmPassword,
+    setShowConfirmPassword,
+  ] = useState(false);
 
   // ==========================================================
   // EDITING
@@ -152,126 +170,8 @@ const User = () => {
 
   const rowsPerPage = 10;
 
-  const { toast } = useToast();
-
-  // ==========================================================
-  // FETCH USERS
-  // ==========================================================
-
-  const fetchUsers = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      let query = supabase
-        .from("users")
-        .select(
-          "id, username, email, role, status, created_at"
-        )
-        .order(
-          "created_at",
-          {
-            ascending: false,
-          }
-        );
-
-      // ======================================================
-      // SEARCH
-      // ======================================================
-
-      if (
-        searchTerm.trim()
-      ) {
-        const search =
-          searchTerm.trim();
-
-        query = query.or(
-          `username.ilike.%${search}%,email.ilike.%${search}%`
-        );
-      }
-
-      // ======================================================
-      // ROLE FILTER
-      // ======================================================
-
-      if (
-        roleFilter &&
-        roleFilter !== "all"
-      ) {
-        query = query.eq(
-          "role",
-          roleFilter
-        );
-      }
-
-      // ======================================================
-      // STATUS FILTER
-      // ======================================================
-
-      if (
-        statusFilter &&
-        statusFilter !== "all"
-      ) {
-        query = query.eq(
-          "status",
-          statusFilter
-        );
-      }
-
-      const {
-        data,
-        error: fetchError,
-      } = await query;
-
-      if (fetchError) {
-        throw fetchError;
-      }
-
-      setUsers(
-        (data || []) as UserItem[]
-      );
-
-      const totalPages =
-        Math.ceil(
-          (data?.length || 0) /
-            rowsPerPage
-        ) || 1;
-
-      setPage(
-        (currentPage) =>
-          Math.min(
-            currentPage,
-            totalPages
-          )
-      );
-    } catch (err: any) {
-      console.error(
-        "FETCH USERS ERROR:",
-        err
-      );
-
-      setError(
-        err?.message ||
-          "Failed to load users."
-      );
-
-      setUsers([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ==========================================================
-  // FETCH WHEN FILTER CHANGES
-  // ==========================================================
-
-  useEffect(() => {
-    fetchUsers();
-  }, [
-    searchTerm,
-    roleFilter,
-    statusFilter,
-  ]);
+  const { toast } =
+    useToast();
 
   // ==========================================================
   // RESET FORM
@@ -295,320 +195,466 @@ const User = () => {
   };
 
   // ==========================================================
+  // GET CURRENT SESSION
+  // ==========================================================
+
+  const getFreshSession =
+    async () => {
+      try {
+        // First check current session
+        const {
+          data: sessionData,
+          error: sessionError,
+        } =
+          await supabase.auth.getSession();
+
+        if (
+          sessionError
+        ) {
+          console.error(
+            "GET SESSION ERROR:",
+            sessionError
+          );
+        }
+
+        // No session
+        if (
+          !sessionData.session
+        ) {
+          return null;
+        }
+
+        // ====================================================
+        // REFRESH SESSION
+        // ====================================================
+
+        const {
+          data: refreshedData,
+          error: refreshError,
+        } =
+          await supabase.auth.refreshSession();
+
+        if (
+          refreshError
+        ) {
+          console.error(
+            "REFRESH SESSION ERROR:",
+            refreshError
+          );
+
+          // If refresh fails, use existing session
+          return sessionData.session;
+        }
+
+        return (
+          refreshedData.session ||
+          sessionData.session
+        );
+      } catch (err) {
+        console.error(
+          "SESSION ERROR:",
+          err
+        );
+
+        return null;
+      }
+    };
+
+  // ==========================================================
+  // FETCH USERS
+  // ==========================================================
+
+  const fetchUsers =
+    async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        let query =
+          supabase
+            .from("users")
+            .select(
+              "id, username, email, role, status, created_at"
+            )
+            .order(
+              "created_at",
+              {
+                ascending: false,
+              }
+            );
+
+        // ====================================================
+        // SEARCH
+        // ====================================================
+
+        if (
+          searchTerm.trim()
+        ) {
+          const search =
+            searchTerm
+              .trim();
+
+          query =
+            query.or(
+              `username.ilike.%${search}%,email.ilike.%${search}%`
+            );
+        }
+
+        // ====================================================
+        // ROLE
+        // ====================================================
+
+        if (
+          roleFilter &&
+          roleFilter !==
+            "all"
+        ) {
+          query =
+            query.eq(
+              "role",
+              roleFilter
+            );
+        }
+
+        // ====================================================
+        // STATUS
+        // ====================================================
+
+        if (
+          statusFilter &&
+          statusFilter !==
+            "all"
+        ) {
+          query =
+            query.eq(
+              "status",
+              statusFilter
+            );
+        }
+
+        const {
+          data,
+          error:
+            fetchError,
+        } =
+          await query;
+
+        if (
+          fetchError
+        ) {
+          throw fetchError;
+        }
+
+        const result =
+          (data ||
+            []) as UserItem[];
+
+        setUsers(
+          result
+        );
+
+        const totalPages =
+          Math.ceil(
+            result.length /
+              rowsPerPage
+          ) || 1;
+
+        setPage(
+          (currentPage) =>
+            Math.min(
+              currentPage,
+              totalPages
+            )
+        );
+      } catch (err: any) {
+        console.error(
+          "FETCH USERS ERROR:",
+          err
+        );
+
+        setError(
+          err?.message ||
+            "Failed to load users."
+        );
+
+        setUsers([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+  // ==========================================================
+  // FETCH WHEN FILTER CHANGES
+  // ==========================================================
+
+  useEffect(() => {
+    fetchUsers();
+  }, [
+    searchTerm,
+    roleFilter,
+    statusFilter,
+  ]);
+
+  // ==========================================================
   // ADD USER
   // ==========================================================
 
-  const handleAddUser = () => {
-    resetForm();
+  const handleAddUser =
+    () => {
+      resetForm();
 
-    setDialogMode("add");
-    setDialogOpen(true);
-  };
+      setDialogMode("add");
+      setDialogOpen(true);
+    };
 
   // ==========================================================
   // EDIT USER
   // ==========================================================
 
-  const handleEditUser = (
-    user: UserItem
-  ) => {
-    setDialogMode("edit");
+  const handleEditUser =
+    (user: UserItem) => {
+      setDialogMode("edit");
 
-    setFormData({
-      username:
-        user.username || "",
-      email:
-        user.email || "",
-      role:
-        user.role || "staff",
-      status:
-        user.status || "active",
-    });
+      setFormData({
+        username:
+          user.username ||
+          "",
+        email:
+          user.email ||
+          "",
+        role:
+          user.role ||
+          "staff",
+        status:
+          user.status ||
+          "active",
+      });
 
-    // Password lama TIDAK pernah diambil.
-    setNewPassword("");
-    setConfirmPassword("");
+      // IMPORTANT:
+      // Never load old password
 
-    setShowPassword(false);
-    setShowConfirmPassword(false);
+      setNewPassword("");
+      setConfirmPassword("");
 
-    setEditingId(user.id);
+      setShowPassword(false);
+      setShowConfirmPassword(false);
 
-    setDialogOpen(true);
-  };
-
-  // ==========================================================
-  // CALL EDGE FUNCTION
-  // ==========================================================
-
-  const callAdminUser = async (
-    payload: Record<string, unknown>
-  ) => {
-    // ========================================================
-    // GET CURRENT SESSION
-    // ========================================================
-
-    const {
-      data: sessionData,
-      error: sessionError,
-    } =
-      await supabase.auth.getSession();
-
-    if (
-      sessionError
-    ) {
-      throw new Error(
-        sessionError.message
+      setEditingId(
+        user.id
       );
-    }
 
-    let session =
-      sessionData.session;
+      setDialogOpen(true);
+    };
 
-    // ========================================================
-    // REFRESH IF SESSION IS MISSING
-    // ========================================================
+  // ==========================================================
+  // CALL ADMIN USER
+  // ==========================================================
 
-    if (!session) {
-      const {
-        data: refreshed,
-        error:
-          refreshError,
-      } =
-        await supabase.auth.refreshSession();
+  const callAdminUser =
+    async (
+      payload: Record<
+        string,
+        unknown
+      >
+    ) => {
+      // ======================================================
+      // ALWAYS GET FRESH SESSION
+      // ======================================================
 
-      if (
-        refreshError ||
-        !refreshed.session
-      ) {
+      const session =
+        await getFreshSession();
+
+      if (!session) {
         throw new Error(
           "Your login session has expired. Please login again."
         );
       }
 
-      session =
-        refreshed.session;
-    }
+      // ======================================================
+      // INVOKE EDGE FUNCTION
+      // ======================================================
 
-    // ========================================================
-    // EXPLICIT AUTHORIZATION HEADER
-    // ========================================================
+      const {
+        data,
+        error,
+      } =
+        await supabase.functions.invoke(
+          "admin-user",
+          {
+            body: payload,
 
-    const accessToken =
-      session.access_token;
+            headers: {
+              Authorization:
+                `Bearer ${session.access_token}`,
+            },
+          }
+        );
 
-    if (!accessToken) {
-      throw new Error(
-        "Authentication token is missing. Please login again."
-      );
-    }
+      // ======================================================
+      // EDGE FUNCTION TRANSPORT ERROR
+      // ======================================================
 
-    console.log(
-      "Calling admin-user with session user:",
-      session.user.id
-    );
+      if (error) {
+        console.error(
+          "EDGE FUNCTION ERROR:",
+          error
+        );
 
-    // ========================================================
-    // INVOKE
-    // ========================================================
+        let message =
+          error.message ||
+          "Edge Function request failed.";
 
-    const {
-      data,
-      error,
-    } =
-      await supabase.functions.invoke(
-        "admin-user",
-        {
-          body: payload,
+        // Try reading context body
+        try {
+          const context =
+            (error as any)
+              ?.context;
 
-          headers: {
-            Authorization:
-              `Bearer ${accessToken}`,
-          },
+          if (
+            context
+          ) {
+            if (
+              typeof context.json ===
+              "function"
+            ) {
+              const body =
+                await context.json();
+
+              if (
+                body?.error
+              ) {
+                message =
+                  body.error;
+              }
+            }
+          }
+        } catch {
+          // ignore
         }
-      );
 
-    // ========================================================
-    // FUNCTION ERROR
-    // ========================================================
+        throw new Error(
+          message
+        );
+      }
 
-    if (error) {
-      console.error(
-        "EDGE FUNCTION ERROR:",
-        error
-      );
+      // ======================================================
+      // EMPTY RESPONSE
+      // ======================================================
 
-      throw new Error(
-        error.message ||
-          "Edge Function request failed."
-      );
-    }
+      if (!data) {
+        throw new Error(
+          "No response received from admin-user function."
+        );
+      }
 
-    // ========================================================
-    // RESPONSE ERROR
-    // ========================================================
-
-    if (
-      !data ||
-      data.success !== true
-    ) {
-      console.error(
+      console.log(
         "ADMIN USER RESPONSE:",
         data
       );
 
-      throw new Error(
-        data?.error ||
-          "Operation failed."
-      );
-    }
+      // ======================================================
+      // APPLICATION ERROR
+      // ======================================================
 
-    return data;
-  };
+      if (
+        data.success !==
+        true
+      ) {
+        throw new Error(
+          data.error ||
+            "Operation failed."
+        );
+      }
+
+      return data;
+    };
 
   // ==========================================================
   // DELETE USER
   // ==========================================================
 
-  const handleDeleteUser = async (
-    id: string
-  ) => {
-    const user =
-      users.find(
-        (u) => u.id === id
-      );
+  const handleDeleteUser =
+    async (
+      id: string
+    ) => {
+      const user =
+        users.find(
+          (u) =>
+            u.id === id
+        );
 
-    if (!user) {
-      return;
-    }
+      if (!user) {
+        return;
+      }
 
-    const confirmed =
-      window.confirm(
-        `Delete user "${user.username}"?\n\nThis will delete the authentication account too.`
-      );
+      const confirmed =
+        window.confirm(
+          `Delete user "${user.username}"?\n\nThis will delete the authentication account too.`
+        );
 
-    if (!confirmed) {
-      return;
-    }
+      if (!confirmed) {
+        return;
+      }
 
-    try {
-      setLoading(true);
+      try {
+        setLoading(true);
 
-      await callAdminUser({
-        action: "delete",
-        user_id: id,
-      });
+        await callAdminUser({
+          action: "delete",
+          user_id: id,
+        });
 
-      toast({
-        title: "Success",
-        description:
-          "User deleted successfully.",
-      });
+        toast({
+          title: "Success",
+          description:
+            "User deleted successfully.",
+        });
 
-      await fetchUsers();
-    } catch (err: any) {
-      console.error(
-        "DELETE USER ERROR:",
-        err
-      );
+        await fetchUsers();
+      } catch (
+        err: any
+      ) {
+        console.error(
+          "DELETE USER ERROR:",
+          err
+        );
 
-      toast({
-        title: "Error",
-        description:
-          err?.message ||
-          "Failed to delete user.",
-        variant:
-          "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+        toast({
+          title: "Error",
+          description:
+            err?.message ||
+            "Failed to delete user.",
+          variant:
+            "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
 
   // ==========================================================
   // SUBMIT
   // ==========================================================
 
-  const handleSubmit = async (
-    e: React.FormEvent
-  ) => {
-    e.preventDefault();
+  const handleSubmit =
+    async (
+      e: React.FormEvent
+    ) => {
+      e.preventDefault();
 
-    // ========================================================
-    // USERNAME
-    // ========================================================
+      // ======================================================
+      // USERNAME
+      // ======================================================
 
-    const username =
-      formData.username.trim();
+      const username =
+        formData.username.trim();
 
-    if (!username) {
-      toast({
-        title:
-          "Username required",
-        description:
-          "Please enter a username.",
-        variant:
-          "destructive",
-      });
-
-      return;
-    }
-
-    // ========================================================
-    // EMAIL
-    // ========================================================
-
-    const email =
-      formData.email
-        .trim()
-        .toLowerCase();
-
-    if (!email) {
-      toast({
-        title:
-          "Email required",
-        description:
-          "Please enter an email.",
-        variant:
-          "destructive",
-      });
-
-      return;
-    }
-
-    // ========================================================
-    // PASSWORD ADD
-    // ========================================================
-
-    if (
-      dialogMode === "add" &&
-      !newPassword
-    ) {
-      toast({
-        title:
-          "Password required",
-        description:
-          "New user must have a password.",
-        variant:
-          "destructive",
-      });
-
-      return;
-    }
-
-    // ========================================================
-    // PASSWORD VALIDATION
-    // ========================================================
-
-    if (newPassword) {
-      if (
-        newPassword.length < 8
-      ) {
+      if (!username) {
         toast({
           title:
-            "Password too short",
+            "Username required",
           description:
-            "Password must contain at least 8 characters.",
+            "Please enter a username.",
           variant:
             "destructive",
         });
@@ -616,144 +662,273 @@ const User = () => {
         return;
       }
 
-      if (
-        newPassword !==
-        confirmPassword
-      ) {
+      // ======================================================
+      // EMAIL
+      // ======================================================
+
+      const email =
+        formData.email
+          .trim()
+          .toLowerCase();
+
+      if (!email) {
         toast({
           title:
-            "Password mismatch",
+            "Email required",
           description:
-            "Password and confirmation password do not match.",
+            "Please enter an email.",
           variant:
             "destructive",
         });
 
         return;
       }
-    }
-
-    // ========================================================
-    // SAVE
-    // ========================================================
-
-    try {
-      setLoading(true);
 
       // ======================================================
-      // ADD
+      // PASSWORD ADD
       // ======================================================
 
       if (
-        dialogMode === "add"
+        dialogMode ===
+          "add" &&
+        !newPassword
       ) {
-        await callAdminUser({
-          action: "create",
-
-          username,
-
-          email,
-
-          password:
-            newPassword,
-
-          role:
-            formData.role,
-
-          status:
-            formData.status,
-        });
-
         toast({
-          title: "Success",
+          title:
+            "Password required",
           description:
-            "User created successfully.",
+            "New user must have a password.",
+          variant:
+            "destructive",
         });
+
+        return;
       }
 
       // ======================================================
-      // EDIT
+      // PASSWORD VALIDATION
       // ======================================================
 
-      else {
-        if (!editingId) {
-          throw new Error(
-            "User ID is missing."
-          );
+      if (newPassword) {
+        if (
+          newPassword.length <
+          8
+        ) {
+          toast({
+            title:
+              "Password too short",
+            description:
+              "Password must contain at least 8 characters.",
+            variant:
+              "destructive",
+          });
+
+          return;
         }
 
-        const payload:
-          Record<
-            string,
-            unknown
-          > = {
-          action: "update",
+        if (
+          newPassword !==
+          confirmPassword
+        ) {
+          toast({
+            title:
+              "Password mismatch",
+            description:
+              "Password and confirmation password do not match.",
+            variant:
+              "destructive",
+          });
 
-          user_id:
-            editingId,
+          return;
+        }
+      }
 
-          username,
+      // ======================================================
+      // SAVE
+      // ======================================================
 
-          email,
-
-          role:
-            formData.role,
-
-          status:
-            formData.status,
-        };
+      try {
+        setLoading(true);
 
         // ====================================================
-        // ONLY SEND PASSWORD IF ENTERED
+        // CREATE
         // ====================================================
 
         if (
-          newPassword.trim()
+          dialogMode ===
+          "add"
         ) {
-          payload.password =
-            newPassword;
+          await callAdminUser({
+            action:
+              "create",
+
+            username,
+
+            email,
+
+            password:
+              newPassword,
+
+            role:
+              formData.role,
+
+            status:
+              formData.status,
+          });
+
+          toast({
+            title: "Success",
+            description:
+              "User created successfully.",
+          });
         }
 
-        await callAdminUser(
-          payload
+        // ====================================================
+        // UPDATE
+        // ====================================================
+
+        else {
+          if (!editingId) {
+            throw new Error(
+              "User ID is missing."
+            );
+          }
+
+          const passwordToSend =
+            newPassword.trim();
+
+          const payload: Record<
+            string,
+            unknown
+          > = {
+            action:
+              "update",
+
+            user_id:
+              editingId,
+
+            username,
+
+            email,
+
+            role:
+              formData.role,
+
+            status:
+              formData.status,
+          };
+
+          // ==================================================
+          // ONLY SEND PASSWORD IF ENTERED
+          // ==================================================
+
+          if (
+            passwordToSend
+          ) {
+            payload.password =
+              passwordToSend;
+          }
+
+          const result =
+            await callAdminUser(
+              payload
+            );
+
+          // ==================================================
+          // IMPORTANT
+          //
+          // If changing OWN password,
+          // refresh Supabase session.
+          // ==================================================
+
+          if (
+            result
+              ?.is_self_update &&
+            result
+              ?.password_changed
+          ) {
+            console.log(
+              "Own password changed. Refreshing session..."
+            );
+
+            // Give Supabase a moment
+            await new Promise(
+              (resolve) =>
+                setTimeout(
+                  resolve,
+                  300
+                )
+            );
+
+            const {
+              data:
+                refreshedSession,
+              error:
+                refreshError,
+            } =
+              await supabase.auth.refreshSession();
+
+            if (
+              refreshError
+            ) {
+              console.error(
+                "POST PASSWORD REFRESH ERROR:",
+                refreshError
+              );
+
+              toast({
+                title:
+                  "Password changed",
+                description:
+                  "Password changed successfully. Please login again if the current session expires.",
+              });
+            } else {
+              console.log(
+                "Session refreshed:",
+                !!refreshedSession
+                  .session
+              );
+            }
+          }
+
+          toast({
+            title: "Success",
+            description:
+              passwordToSend
+                ? "User and password updated successfully."
+                : "User updated successfully.",
+          });
+        }
+
+        // ====================================================
+        // CLOSE
+        // ====================================================
+
+        setDialogOpen(false);
+
+        resetForm();
+
+        await fetchUsers();
+      } catch (
+        err: any
+      ) {
+        console.error(
+          "SAVE USER ERROR:",
+          err
         );
 
         toast({
-          title: "Success",
+          title: "Error",
           description:
-            newPassword
-              ? "User and password updated successfully."
-              : "User updated successfully.",
+            err?.message ||
+            "Failed to save user.",
+          variant:
+            "destructive",
         });
+      } finally {
+        setLoading(false);
       }
-
-      // ======================================================
-      // CLOSE
-      // ======================================================
-
-      setDialogOpen(false);
-
-      resetForm();
-
-      await fetchUsers();
-    } catch (err: any) {
-      console.error(
-        "SAVE USER ERROR:",
-        err
-      );
-
-      toast({
-        title: "Error",
-        description:
-          err?.message ||
-          "Failed to save user.",
-        variant:
-          "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
 
   // ==========================================================
   // PAGINATION
@@ -778,19 +953,22 @@ const User = () => {
   // DATE
   // ==========================================================
 
-  const formatDate = (
-    value: string | null
-  ) => {
-    if (!value) {
-      return "-";
-    }
+  const formatDate =
+    (
+      value:
+        | string
+        | null
+    ) => {
+      if (!value) {
+        return "-";
+      }
 
-    return new Date(
-      value
-    ).toLocaleDateString(
-      "id-ID"
-    );
-  };
+      return new Date(
+        value
+      ).toLocaleDateString(
+        "id-ID"
+      );
+    };
 
   // ==========================================================
   // RENDER
@@ -818,6 +996,7 @@ const User = () => {
             className="flex items-center"
           >
             <Plus className="mr-2 h-4 w-4" />
+
             Add User
           </Button>
 
@@ -829,7 +1008,8 @@ const User = () => {
                 key: "id",
               },
               {
-                header: "Username",
+                header:
+                  "Username",
                 key: "username",
               },
               {
@@ -841,7 +1021,8 @@ const User = () => {
                 key: "role",
               },
               {
-                header: "Status",
+                header:
+                  "Status",
                 key: "status",
               },
               {
@@ -859,6 +1040,7 @@ const User = () => {
               className="px-3"
             >
               <Download className="mr-2 h-4 w-4" />
+
               Export
             </Button>
           </XlsxTable>
@@ -955,7 +1137,9 @@ const User = () => {
 
       {error && (
         <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded">
+
           <p>{error}</p>
+
         </div>
       )}
 
@@ -1189,15 +1373,17 @@ const User = () => {
         open={
           dialogOpen
         }
-        onOpenChange={(
-          open
-        ) => {
-          setDialogOpen(open);
+        onOpenChange={
+          (open) => {
+            setDialogOpen(
+              open
+            );
 
-          if (!open) {
-            resetForm();
+            if (!open) {
+              resetForm();
+            }
           }
-        }}
+        }
       >
 
         <DialogContent className="w-full max-w-md max-h-[90vh] overflow-y-auto">
@@ -1303,12 +1489,10 @@ const User = () => {
                 <KeyRound className="h-4 w-4" />
 
                 <label className="block text-sm font-medium">
-
                   {dialogMode ===
                   "add"
                     ? "Password *"
                     : "New Password"}
-
                 </label>
 
               </div>
@@ -1326,7 +1510,8 @@ const User = () => {
                   }
                   onChange={(e) =>
                     setNewPassword(
-                      e.target.value
+                      e.target
+                        .value
                     )
                   }
                   placeholder={
@@ -1401,7 +1586,8 @@ const User = () => {
                   }
                   onChange={(e) =>
                     setConfirmPassword(
-                      e.target.value
+                      e.target
+                        .value
                     )
                   }
                   placeholder="Confirm password"
@@ -1470,9 +1656,7 @@ const User = () => {
               >
 
                 <SelectTrigger className="w-full">
-
                   <SelectValue placeholder="Select role" />
-
                 </SelectTrigger>
 
                 <SelectContent>
@@ -1523,9 +1707,7 @@ const User = () => {
               >
 
                 <SelectTrigger className="w-full">
-
                   <SelectValue placeholder="Select status" />
-
                 </SelectTrigger>
 
                 <SelectContent>
@@ -1558,14 +1740,18 @@ const User = () => {
                     false
                   )
                 }
-                disabled={loading}
+                disabled={
+                  loading
+                }
               >
                 Cancel
               </Button>
 
               <Button
                 type="submit"
-                disabled={loading}
+                disabled={
+                  loading
+                }
               >
 
                 {loading
