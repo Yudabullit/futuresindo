@@ -1,23 +1,11 @@
-import {
-  useEffect,
-  useState,
-} from "react";
+import { useEffect, useState } from "react";
 
-import {
-  supabase,
-} from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/client";
 
-import {
-  useToast,
-} from "@/components/ui/use-toast";
+import { useToast } from "@/components/ui/use-toast";
 
-import {
-  Button,
-} from "@/components/ui/button";
-
-import {
-  Input,
-} from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 import {
   Select,
@@ -52,9 +40,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 
-import {
-  Search,
-} from "@/components/ui/search";
+import { Search } from "@/components/ui/search";
 
 import {
   Trash2,
@@ -66,9 +52,7 @@ import {
   KeyRound,
 } from "lucide-react";
 
-import {
-  XlsxTable,
-} from "@/components/ui/xlsx-table";
+import { XlsxTable } from "@/components/ui/xlsx-table";
 
 // ============================================================
 // TYPE
@@ -102,7 +86,7 @@ const User = () => {
     useState<string | null>(null);
 
   // ==========================================================
-  // SEARCH
+  // SEARCH / FILTER
   // ==========================================================
 
   const [searchTerm, setSearchTerm] =
@@ -143,20 +127,14 @@ const User = () => {
   const [newPassword, setNewPassword] =
     useState("");
 
-  const [
-    confirmPassword,
-    setConfirmPassword,
-  ] = useState("");
+  const [confirmPassword, setConfirmPassword] =
+    useState("");
 
-  const [
-    showPassword,
-    setShowPassword,
-  ] = useState(false);
+  const [showPassword, setShowPassword] =
+    useState(false);
 
-  const [
-    showConfirmPassword,
-    setShowConfirmPassword,
-  ] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] =
+    useState(false);
 
   // ==========================================================
   // EDITING
@@ -174,12 +152,7 @@ const User = () => {
 
   const rowsPerPage = 10;
 
-  // ==========================================================
-  // TOAST
-  // ==========================================================
-
-  const { toast } =
-    useToast();
+  const { toast } = useToast();
 
   // ==========================================================
   // FETCH USERS
@@ -202,26 +175,24 @@ const User = () => {
           }
         );
 
-      // ------------------------------------------------------
+      // ======================================================
       // SEARCH
-      // ------------------------------------------------------
+      // ======================================================
 
       if (
         searchTerm.trim()
       ) {
         const search =
-          searchTerm
-            .trim()
-            .replace(/,/g, "");
+          searchTerm.trim();
 
         query = query.or(
           `username.ilike.%${search}%,email.ilike.%${search}%`
         );
       }
 
-      // ------------------------------------------------------
-      // ROLE
-      // ------------------------------------------------------
+      // ======================================================
+      // ROLE FILTER
+      // ======================================================
 
       if (
         roleFilter &&
@@ -233,9 +204,9 @@ const User = () => {
         );
       }
 
-      // ------------------------------------------------------
-      // STATUS
-      // ------------------------------------------------------
+      // ======================================================
+      // STATUS FILTER
+      // ======================================================
 
       if (
         statusFilter &&
@@ -247,33 +218,24 @@ const User = () => {
         );
       }
 
-      // ------------------------------------------------------
-      // EXECUTE
-      // ------------------------------------------------------
-
       const {
         data,
-        error:
-          fetchError,
+        error: fetchError,
       } = await query;
 
       if (fetchError) {
         throw fetchError;
       }
 
-      const result =
-        (data || []) as UserItem[];
-
-      setUsers(result);
+      setUsers(
+        (data || []) as UserItem[]
+      );
 
       const totalPages =
-        Math.max(
-          1,
-          Math.ceil(
-            result.length /
-              rowsPerPage
-          )
-        );
+        Math.ceil(
+          (data?.length || 0) /
+            rowsPerPage
+        ) || 1;
 
       setPage(
         (currentPage) =>
@@ -288,11 +250,10 @@ const User = () => {
         err
       );
 
-      const message =
+      setError(
         err?.message ||
-        "Failed to load users.";
-
-      setError(message);
+          "Failed to load users."
+      );
 
       setUsers([]);
     } finally {
@@ -305,8 +266,6 @@ const User = () => {
   // ==========================================================
 
   useEffect(() => {
-    setPage(1);
-
     fetchUsers();
   }, [
     searchTerm,
@@ -327,11 +286,9 @@ const User = () => {
     });
 
     setNewPassword("");
-
     setConfirmPassword("");
 
     setShowPassword(false);
-
     setShowConfirmPassword(false);
 
     setEditingId(null);
@@ -345,7 +302,6 @@ const User = () => {
     resetForm();
 
     setDialogMode("add");
-
     setDialogOpen(true);
   };
 
@@ -369,17 +325,11 @@ const User = () => {
         user.status || "active",
     });
 
-    // IMPORTANT:
-    // Password lama TIDAK PERNAH DIAMBIL.
-    // Password hanya dikirim kalau user
-    // memasukkan password baru.
-
+    // Password lama TIDAK pernah diambil.
     setNewPassword("");
-
     setConfirmPassword("");
 
     setShowPassword(false);
-
     setShowConfirmPassword(false);
 
     setEditingId(user.id);
@@ -388,40 +338,79 @@ const User = () => {
   };
 
   // ==========================================================
-  // CALL ADMIN USER EDGE FUNCTION
+  // CALL EDGE FUNCTION
   // ==========================================================
 
   const callAdminUser = async (
     payload: Record<string, unknown>
   ) => {
-    // --------------------------------------------------------
+    // ========================================================
     // GET CURRENT SESSION
-    // --------------------------------------------------------
+    // ========================================================
 
     const {
       data: sessionData,
-      error:
-        sessionError,
+      error: sessionError,
     } =
       await supabase.auth.getSession();
 
-    if (sessionError) {
+    if (
+      sessionError
+    ) {
       throw new Error(
         sessionError.message
       );
     }
 
-    if (
-      !sessionData.session
-    ) {
+    let session =
+      sessionData.session;
+
+    // ========================================================
+    // REFRESH IF SESSION IS MISSING
+    // ========================================================
+
+    if (!session) {
+      const {
+        data: refreshed,
+        error:
+          refreshError,
+      } =
+        await supabase.auth.refreshSession();
+
+      if (
+        refreshError ||
+        !refreshed.session
+      ) {
+        throw new Error(
+          "Your login session has expired. Please login again."
+        );
+      }
+
+      session =
+        refreshed.session;
+    }
+
+    // ========================================================
+    // EXPLICIT AUTHORIZATION HEADER
+    // ========================================================
+
+    const accessToken =
+      session.access_token;
+
+    if (!accessToken) {
       throw new Error(
-        "Your login session has expired. Please login again."
+        "Authentication token is missing. Please login again."
       );
     }
 
-    // --------------------------------------------------------
-    // INVOKE EDGE FUNCTION
-    // --------------------------------------------------------
+    console.log(
+      "Calling admin-user with session user:",
+      session.user.id
+    );
+
+    // ========================================================
+    // INVOKE
+    // ========================================================
 
     const {
       data,
@@ -431,16 +420,17 @@ const User = () => {
         "admin-user",
         {
           body: payload,
+
           headers: {
             Authorization:
-              `Bearer ${sessionData.session.access_token}`,
+              `Bearer ${accessToken}`,
           },
         }
       );
 
-    // --------------------------------------------------------
-    // HANDLE EDGE FUNCTION ERROR
-    // --------------------------------------------------------
+    // ========================================================
+    // FUNCTION ERROR
+    // ========================================================
 
     if (error) {
       console.error(
@@ -448,65 +438,27 @@ const User = () => {
         error
       );
 
-      // Supabase FunctionsHttpError
-      // biasanya menyimpan response di error.context
-      try {
-        const context =
-          (error as any)
-            ?.context;
-
-        if (
-          context &&
-          typeof context.json ===
-            "function"
-        ) {
-          const errorBody =
-            await context.json();
-
-          console.error(
-            "EDGE FUNCTION BODY:",
-            errorBody
-          );
-
-          throw new Error(
-            errorBody?.error ||
-              errorBody?.message ||
-              error.message ||
-              "Edge Function failed."
-          );
-        }
-      } catch (
-        contextError
-      ) {
-        if (
-          contextError instanceof
-          Error
-        ) {
-          throw contextError;
-        }
-      }
-
       throw new Error(
         error.message ||
-          "Edge Function failed."
+          "Edge Function request failed."
       );
     }
 
-    // --------------------------------------------------------
-    // RESPONSE VALIDATION
-    // --------------------------------------------------------
-
-    if (!data) {
-      throw new Error(
-        "No response received from Edge Function."
-      );
-    }
+    // ========================================================
+    // RESPONSE ERROR
+    // ========================================================
 
     if (
+      !data ||
       data.success !== true
     ) {
+      console.error(
+        "ADMIN USER RESPONSE:",
+        data
+      );
+
       throw new Error(
-        data.error ||
+        data?.error ||
           "Operation failed."
       );
     }
@@ -518,128 +470,145 @@ const User = () => {
   // DELETE USER
   // ==========================================================
 
-  const handleDeleteUser =
-    async (
-      id: string
-    ) => {
-      const user =
-        users.find(
-          (u) =>
-            u.id === id
-        );
+  const handleDeleteUser = async (
+    id: string
+  ) => {
+    const user =
+      users.find(
+        (u) => u.id === id
+      );
 
-      if (!user) {
-        return;
-      }
+    if (!user) {
+      return;
+    }
 
-      const confirmed =
-        window.confirm(
-          `Delete user "${user.username}"?\n\nThis will delete the authentication account too.`
-        );
+    const confirmed =
+      window.confirm(
+        `Delete user "${user.username}"?\n\nThis will delete the authentication account too.`
+      );
 
-      if (!confirmed) {
-        return;
-      }
+    if (!confirmed) {
+      return;
+    }
 
-      try {
-        setLoading(true);
+    try {
+      setLoading(true);
 
-        await callAdminUser({
-          action: "delete",
-          user_id: id,
-        });
+      await callAdminUser({
+        action: "delete",
+        user_id: id,
+      });
 
-        toast({
-          title: "Success",
-          description:
-            "User deleted successfully.",
-        });
+      toast({
+        title: "Success",
+        description:
+          "User deleted successfully.",
+      });
 
-        await fetchUsers();
-      } catch (err: any) {
-        console.error(
-          "DELETE USER ERROR:",
-          err
-        );
+      await fetchUsers();
+    } catch (err: any) {
+      console.error(
+        "DELETE USER ERROR:",
+        err
+      );
 
-        toast({
-          title: "Error",
-          description:
-            err?.message ||
-            "Failed to delete user.",
-          variant:
-            "destructive",
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
+      toast({
+        title: "Error",
+        description:
+          err?.message ||
+          "Failed to delete user.",
+        variant:
+          "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // ==========================================================
   // SUBMIT
   // ==========================================================
 
-  const handleSubmit =
-    async (
-      e: React.FormEvent
-    ) => {
-      e.preventDefault();
+  const handleSubmit = async (
+    e: React.FormEvent
+  ) => {
+    e.preventDefault();
 
-      // ------------------------------------------------------
-      // USERNAME
-      // ------------------------------------------------------
+    // ========================================================
+    // USERNAME
+    // ========================================================
 
-      const username =
-        formData.username.trim();
+    const username =
+      formData.username.trim();
 
-      if (!username) {
-        toast({
-          title:
-            "Username required",
-          description:
-            "Please enter a username.",
-          variant:
-            "destructive",
-        });
+    if (!username) {
+      toast({
+        title:
+          "Username required",
+        description:
+          "Please enter a username.",
+        variant:
+          "destructive",
+      });
 
-        return;
-      }
+      return;
+    }
 
-      // ------------------------------------------------------
-      // EMAIL
-      // ------------------------------------------------------
+    // ========================================================
+    // EMAIL
+    // ========================================================
 
-      const email =
-        formData.email
-          .trim()
-          .toLowerCase();
+    const email =
+      formData.email
+        .trim()
+        .toLowerCase();
 
-      if (!email) {
-        toast({
-          title:
-            "Email required",
-          description:
-            "Please enter an email.",
-          variant:
-            "destructive",
-        });
+    if (!email) {
+      toast({
+        title:
+          "Email required",
+        description:
+          "Please enter an email.",
+        variant:
+          "destructive",
+      });
 
-        return;
-      }
+      return;
+    }
 
-      // ------------------------------------------------------
-      // ADD PASSWORD
-      // ------------------------------------------------------
+    // ========================================================
+    // PASSWORD ADD
+    // ========================================================
 
+    if (
+      dialogMode === "add" &&
+      !newPassword
+    ) {
+      toast({
+        title:
+          "Password required",
+        description:
+          "New user must have a password.",
+        variant:
+          "destructive",
+      });
+
+      return;
+    }
+
+    // ========================================================
+    // PASSWORD VALIDATION
+    // ========================================================
+
+    if (newPassword) {
       if (
-        dialogMode === "add" &&
-        !newPassword
+        newPassword.length < 8
       ) {
         toast({
           title:
-            "Password required",
+            "Password too short",
           description:
-            "New user must have a password.",
+            "Password must contain at least 8 characters.",
           variant:
             "destructive",
         });
@@ -647,51 +616,9 @@ const User = () => {
         return;
       }
 
-      // ------------------------------------------------------
-      // PASSWORD VALIDATION
-      // ------------------------------------------------------
-
-      if (newPassword) {
-        if (
-          newPassword.length < 8
-        ) {
-          toast({
-            title:
-              "Password too short",
-            description:
-              "Password must contain at least 8 characters.",
-            variant:
-              "destructive",
-          });
-
-          return;
-        }
-
-        if (
-          newPassword !==
-          confirmPassword
-        ) {
-          toast({
-            title:
-              "Password mismatch",
-            description:
-              "Password and confirmation password do not match.",
-            variant:
-              "destructive",
-          });
-
-          return;
-        }
-      }
-
-      // ------------------------------------------------------
-      // CONFIRM PASSWORD FOR ADD
-      // ------------------------------------------------------
-
       if (
-        dialogMode === "add" &&
         newPassword !==
-          confirmPassword
+        confirmPassword
       ) {
         toast({
           title:
@@ -704,142 +631,139 @@ const User = () => {
 
         return;
       }
+    }
 
-      // ------------------------------------------------------
-      // SAVE
-      // ------------------------------------------------------
+    // ========================================================
+    // SAVE
+    // ========================================================
 
-      try {
-        setLoading(true);
+    try {
+      setLoading(true);
 
-        // ====================================================
-        // CREATE
-        // ====================================================
+      // ======================================================
+      // ADD
+      // ======================================================
 
-        if (
-          dialogMode === "add"
-        ) {
-          await callAdminUser({
-            action: "create",
+      if (
+        dialogMode === "add"
+      ) {
+        await callAdminUser({
+          action: "create",
 
-            username,
+          username,
 
-            email,
+          email,
 
-            password:
-              newPassword,
+          password:
+            newPassword,
 
-            role:
-              formData.role,
+          role:
+            formData.role,
 
-            status:
-              formData.status,
-          });
+          status:
+            formData.status,
+        });
 
-          toast({
-            title: "Success",
-            description:
-              "User created successfully.",
-          });
+        toast({
+          title: "Success",
+          description:
+            "User created successfully.",
+        });
+      }
+
+      // ======================================================
+      // EDIT
+      // ======================================================
+
+      else {
+        if (!editingId) {
+          throw new Error(
+            "User ID is missing."
+          );
         }
 
-        // ====================================================
-        // UPDATE
-        // ====================================================
-
-        else {
-          if (!editingId) {
-            throw new Error(
-              "User ID is missing."
-            );
-          }
-
-          const payload: Record<
+        const payload:
+          Record<
             string,
             unknown
           > = {
-            action: "update",
+          action: "update",
 
-            user_id:
-              editingId,
+          user_id:
+            editingId,
 
-            username,
+          username,
 
-            email,
+          email,
 
-            role:
-              formData.role,
+          role:
+            formData.role,
 
-            status:
-              formData.status,
-          };
+          status:
+            formData.status,
+        };
 
-          // --------------------------------------------------
-          // IMPORTANT
-          // Password hanya dikirim jika diisi
-          // --------------------------------------------------
+        // ====================================================
+        // ONLY SEND PASSWORD IF ENTERED
+        // ====================================================
 
-          if (
-            newPassword.trim()
-          ) {
-            payload.password =
-              newPassword;
-          }
-
-          const result =
-            await callAdminUser(
-              payload
-            );
-
-          toast({
-            title: "Success",
-            description:
-              result.password_changed
-                ? "User and password updated successfully."
-                : "User updated successfully.",
-          });
+        if (
+          newPassword.trim()
+        ) {
+          payload.password =
+            newPassword;
         }
 
-        // ------------------------------------------------------
-        // CLOSE
-        // ------------------------------------------------------
-
-        setDialogOpen(false);
-
-        resetForm();
-
-        await fetchUsers();
-      } catch (err: any) {
-        console.error(
-          "SAVE USER ERROR:",
-          err
+        await callAdminUser(
+          payload
         );
 
         toast({
-          title: "Error",
+          title: "Success",
           description:
-            err?.message ||
-            "Failed to save user.",
-          variant:
-            "destructive",
+            newPassword
+              ? "User and password updated successfully."
+              : "User updated successfully.",
         });
-      } finally {
-        setLoading(false);
       }
-    };
+
+      // ======================================================
+      // CLOSE
+      // ======================================================
+
+      setDialogOpen(false);
+
+      resetForm();
+
+      await fetchUsers();
+    } catch (err: any) {
+      console.error(
+        "SAVE USER ERROR:",
+        err
+      );
+
+      toast({
+        title: "Error",
+        description:
+          err?.message ||
+          "Failed to save user.",
+        variant:
+          "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // ==========================================================
   // PAGINATION
   // ==========================================================
 
   const totalPages =
-    Math.max(
-      1,
-      Math.ceil(
-        users.length /
-          rowsPerPage
-      )
-    );
+    Math.ceil(
+      users.length /
+        rowsPerPage
+    ) || 1;
 
   const paginatedUsers =
     users.slice(
@@ -855,26 +779,15 @@ const User = () => {
   // ==========================================================
 
   const formatDate = (
-    value:
-      | string
-      | null
+    value: string | null
   ) => {
     if (!value) {
       return "-";
     }
 
-    const date =
-      new Date(value);
-
-    if (
-      Number.isNaN(
-        date.getTime()
-      )
-    ) {
-      return "-";
-    }
-
-    return date.toLocaleDateString(
+    return new Date(
+      value
+    ).toLocaleDateString(
       "id-ID"
     );
   };
@@ -916,8 +829,7 @@ const User = () => {
                 key: "id",
               },
               {
-                header:
-                  "Username",
+                header: "Username",
                 key: "username",
               },
               {
@@ -929,8 +841,7 @@ const User = () => {
                 key: "role",
               },
               {
-                header:
-                  "Status",
+                header: "Status",
                 key: "status",
               },
               {
@@ -1044,11 +955,7 @@ const User = () => {
 
       {error && (
         <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded">
-
-          <p>
-            {error}
-          </p>
-
+          <p>{error}</p>
         </div>
       )}
 
@@ -1069,7 +976,6 @@ const User = () => {
 
       {!loading &&
         users.length > 0 && (
-
           <Table>
 
             <TableHeader>
@@ -1125,8 +1031,10 @@ const User = () => {
                     <TableCell>
 
                       <span className="capitalize px-2 py-1 bg-gray-100 rounded text-xs">
+
                         {u.role ||
                           "staff"}
+
                       </span>
 
                     </TableCell>
@@ -1141,8 +1049,10 @@ const User = () => {
                             : "bg-red-100 text-red-800"
                         }`}
                       >
+
                         {u.status ||
                           "active"}
+
                       </span>
 
                     </TableCell>
@@ -1201,7 +1111,6 @@ const User = () => {
 
       {!loading &&
         users.length > 0 && (
-
           <Pagination>
 
             <PaginationContent>
@@ -1283,15 +1192,11 @@ const User = () => {
         onOpenChange={(
           open
         ) => {
-
-          setDialogOpen(
-            open
-          );
+          setDialogOpen(open);
 
           if (!open) {
             resetForm();
           }
-
         }}
       >
 
@@ -1421,8 +1326,7 @@ const User = () => {
                   }
                   onChange={(e) =>
                     setNewPassword(
-                      e.target
-                        .value
+                      e.target.value
                     )
                   }
                   placeholder={
@@ -1468,7 +1372,7 @@ const User = () => {
               {dialogMode ===
                 "edit" && (
                 <p className="text-xs text-gray-500 mt-1">
-                  Isi password hanya jika ingin mengganti password user.
+                  Isi hanya jika ingin mengganti password.
                 </p>
               )}
 
@@ -1497,8 +1401,7 @@ const User = () => {
                   }
                   onChange={(e) =>
                     setConfirmPassword(
-                      e.target
-                        .value
+                      e.target.value
                     )
                   }
                   placeholder="Confirm password"
