@@ -1,3 +1,4 @@
+```tsx
 import { useEffect, useState } from "react";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -43,9 +44,9 @@ import {
 import { Search } from "@/components/ui/search";
 
 import {
-  KeyRound,
-  Eye,
-  EyeOff,
+  Trash2,
+  Edit3,
+  Plus,
   Download,
 } from "lucide-react";
 
@@ -73,63 +74,49 @@ const User = () => {
   // DATA
   // ==========================================================
 
-  const [users, setUsers] =
-    useState<UserItem[]>([]);
+  const [users, setUsers] = useState<UserItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [loading, setLoading] =
-    useState(true);
+  // ==========================================================
+  // SEARCH / FILTER
+  // ==========================================================
 
-  const [error, setError] =
+  const [searchTerm, setSearchTerm] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  // ==========================================================
+  // DIALOG
+  // ==========================================================
+
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] =
+    useState<"add" | "edit">("add");
+
+  // ==========================================================
+  // FORM
+  // ==========================================================
+
+  const [formData, setFormData] = useState({
+    username: "",
+    email: "",
+    role: "staff",
+    status: "active",
+  });
+
+  // ==========================================================
+  // EDITING
+  // ==========================================================
+
+  const [editingId, setEditingId] =
     useState<string | null>(null);
-
-  // ==========================================================
-  // SEARCH
-  // ==========================================================
-
-  const [searchTerm, setSearchTerm] =
-    useState("");
-
-  const [roleFilter, setRoleFilter] =
-    useState("all");
-
-  const [statusFilter, setStatusFilter] =
-    useState("all");
-
-  // ==========================================================
-  // PASSWORD DIALOG
-  // ==========================================================
-
-  const [passwordDialogOpen, setPasswordDialogOpen] =
-    useState(false);
-
-  const [selectedUser, setSelectedUser] =
-    useState<UserItem | null>(null);
-
-  // ==========================================================
-  // PASSWORD
-  // ==========================================================
-
-  const [newPassword, setNewPassword] =
-    useState("");
-
-  const [confirmPassword, setConfirmPassword] =
-    useState("");
-
-  const [showPassword, setShowPassword] =
-    useState(false);
-
-  const [showConfirmPassword, setShowConfirmPassword] =
-    useState(false);
-
-  const [changingPassword, setChangingPassword] =
-    useState(false);
 
   // ==========================================================
   // PAGINATION
   // ==========================================================
 
-  const [page, setPage] =
-    useState(1);
+  const [page, setPage] = useState(1);
 
   const rowsPerPage = 10;
 
@@ -149,27 +136,28 @@ const User = () => {
         .select(
           "id, username, email, role, status, created_at"
         )
-        .order(
-          "created_at",
-          {
-            ascending: false,
-          }
-        );
+        .order("created_at", {
+          ascending: false,
+        });
 
+      // ======================================================
       // SEARCH
+      // ======================================================
 
       if (searchTerm.trim()) {
-        const search =
-          searchTerm.trim();
+        const search = searchTerm.trim();
 
         query = query.or(
           `username.ilike.%${search}%,email.ilike.%${search}%`
         );
       }
 
-      // ROLE
+      // ======================================================
+      // ROLE FILTER
+      // ======================================================
 
       if (
+        roleFilter &&
         roleFilter !== "all"
       ) {
         query = query.eq(
@@ -178,9 +166,12 @@ const User = () => {
         );
       }
 
-      // STATUS
+      // ======================================================
+      // STATUS FILTER
+      // ======================================================
 
       if (
+        statusFilter &&
         statusFilter !== "all"
       ) {
         query = query.eq(
@@ -188,6 +179,10 @@ const User = () => {
           statusFilter
         );
       }
+
+      // ======================================================
+      // REQUEST
+      // ======================================================
 
       const {
         data,
@@ -208,9 +203,9 @@ const User = () => {
             rowsPerPage
         ) || 1;
 
-      setPage((current) =>
+      setPage((currentPage) =>
         Math.min(
-          current,
+          currentPage,
           totalPages
         )
       );
@@ -232,7 +227,7 @@ const User = () => {
   };
 
   // ==========================================================
-  // FETCH WHEN FILTER CHANGES
+  // FETCH WHEN SEARCH / FILTER CHANGES
   // ==========================================================
 
   useEffect(() => {
@@ -244,81 +239,180 @@ const User = () => {
   ]);
 
   // ==========================================================
-  // OPEN PASSWORD DIALOG
+  // RESET FORM
   // ==========================================================
 
-  const openPasswordDialog = (
-    user: UserItem
-  ) => {
-    setSelectedUser(user);
+  const resetForm = () => {
+    setFormData({
+      username: "",
+      email: "",
+      role: "staff",
+      status: "active",
+    });
 
-    setNewPassword("");
-    setConfirmPassword("");
-
-    setShowPassword(false);
-    setShowConfirmPassword(false);
-
-    setPasswordDialogOpen(true);
+    setEditingId(null);
   };
 
   // ==========================================================
-  // CLOSE PASSWORD DIALOG
+  // ADD USER
   // ==========================================================
 
-  const closePasswordDialog = () => {
-    if (changingPassword) {
+  const handleAddUser = () => {
+    resetForm();
+
+    setDialogMode("add");
+    setDialogOpen(true);
+  };
+
+  // ==========================================================
+  // EDIT USER
+  // ==========================================================
+
+  const handleEditUser = (
+    user: UserItem
+  ) => {
+    setDialogMode("edit");
+
+    setFormData({
+      username:
+        user.username || "",
+      email:
+        user.email || "",
+      role:
+        user.role || "staff",
+      status:
+        user.status || "active",
+    });
+
+    setEditingId(user.id);
+
+    setDialogOpen(true);
+  };
+
+  // ==========================================================
+  // CALL EDGE FUNCTION
+  // ==========================================================
+
+  const callAdminUser = async (
+    payload: Record<string, unknown>
+  ) => {
+    const {
+      data,
+      error,
+    } =
+      await supabase.functions.invoke(
+        "admin-user",
+        {
+          body: payload,
+        }
+      );
+
+    if (error) {
+      console.error(
+        "EDGE FUNCTION ERROR:",
+        error
+      );
+
+      throw new Error(
+        error.message ||
+          "Failed to send request to Edge Function."
+      );
+    }
+
+    if (
+      !data ||
+      data.success !== true
+    ) {
+      throw new Error(
+        data?.error ||
+          "Operation failed."
+      );
+    }
+
+    return data;
+  };
+
+  // ==========================================================
+  // DELETE USER
+  // ==========================================================
+
+  const handleDeleteUser = async (
+    id: string
+  ) => {
+    const user =
+      users.find(
+        (u) => u.id === id
+      );
+
+    if (!user) {
       return;
     }
 
-    setPasswordDialogOpen(false);
+    const confirmed =
+      window.confirm(
+        `Delete user "${user.username}"?\n\nThis will delete the authentication account too.`
+      );
 
-    setSelectedUser(null);
+    if (!confirmed) {
+      return;
+    }
 
-    setNewPassword("");
-    setConfirmPassword("");
+    try {
+      setLoading(true);
 
-    setShowPassword(false);
-    setShowConfirmPassword(false);
+      await callAdminUser({
+        action: "delete",
+        user_id: id,
+      });
+
+      toast({
+        title: "Success",
+        description:
+          "User deleted successfully.",
+      });
+
+      await fetchUsers();
+    } catch (err: any) {
+      console.error(
+        "DELETE USER ERROR:",
+        err
+      );
+
+      toast({
+        title: "Error",
+        description:
+          err?.message ||
+          "Failed to delete user.",
+        variant:
+          "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ==========================================================
-  // CHANGE PASSWORD
+  // SUBMIT
   // ==========================================================
 
-  const handleChangePassword = async (
+  const handleSubmit = async (
     e: React.FormEvent
   ) => {
     e.preventDefault();
 
     // ========================================================
-    // USER CHECK
+    // USERNAME
     // ========================================================
 
-    if (!selectedUser) {
-      toast({
-        title: "Error",
-        description:
-          "No user selected.",
-        variant:
-          "destructive",
-      });
+    const username =
+      formData.username.trim();
 
-      return;
-    }
-
-    // ========================================================
-    // PASSWORD
-    // ========================================================
-
-    const password =
-      newPassword;
-
-    if (!password) {
+    if (!username) {
       toast({
         title:
-          "Password required",
+          "Username required",
         description:
-          "Please enter a new password.",
+          "Please enter a username.",
         variant:
           "destructive",
       });
@@ -327,15 +421,18 @@ const User = () => {
     }
 
     // ========================================================
-    // MIN LENGTH
+    // EMAIL
     // ========================================================
 
-    if (password.length < 8) {
+    const email =
+      formData.email.trim();
+
+    if (!email) {
       toast({
         title:
-          "Password too short",
+          "Email required",
         description:
-          "Password must contain at least 8 characters.",
+          "Please enter an email.",
         variant:
           "destructive",
       });
@@ -344,183 +441,100 @@ const User = () => {
     }
 
     // ========================================================
-    // CONFIRM
-    // ========================================================
-
-    if (
-      password !==
-      confirmPassword
-    ) {
-      toast({
-        title:
-          "Password mismatch",
-        description:
-          "Password and confirmation password do not match.",
-        variant:
-          "destructive",
-      });
-
-      return;
-    }
-
-    // ========================================================
-    // START
+    // SAVE
     // ========================================================
 
     try {
-      setChangingPassword(true);
+      setLoading(true);
 
       // ======================================================
-      // GET CURRENT SESSION
-      // ======================================================
-
-      let {
-        data: sessionData,
-      } = await supabase.auth.getSession();
-
-      let session =
-        sessionData.session;
-
-      // ======================================================
-      // NO SESSION
-      // ======================================================
-
-      if (!session) {
-        toast({
-          title:
-            "Session expired",
-          description:
-            "Please login again.",
-          variant:
-            "destructive",
-        });
-
-        return;
-      }
-
-      // ======================================================
-      // REFRESH SESSION
-      //
-      // This is important.
-      //
-      // It prevents sending an expired
-      // access token to the Edge Function.
-      // ======================================================
-
-      const {
-        data: refreshedData,
-        error: refreshError,
-      } =
-        await supabase.auth.refreshSession();
-
-      if (
-        refreshError ||
-        !refreshedData.session
-      ) {
-        console.error(
-          "REFRESH SESSION ERROR:",
-          refreshError
-        );
-
-        toast({
-          title:
-            "Session expired",
-          description:
-            "Your login session has expired. Please login again.",
-          variant:
-            "destructive",
-        });
-
-        return;
-      }
-
-      session =
-        refreshedData.session;
-
-      // ======================================================
-      // CALL EDGE FUNCTION
-      // ======================================================
-
-      const {
-        data,
-        error,
-      } =
-        await supabase.functions.invoke(
-          "admin-password",
-          {
-            body: {
-              user_id:
-                selectedUser.id,
-
-              password:
-                password,
-            },
-            headers: {
-              Authorization:
-                `Bearer ${session.access_token}`,
-            },
-          }
-        );
-
-      // ======================================================
-      // FUNCTION ERROR
-      // ======================================================
-
-      if (error) {
-        console.error(
-          "EDGE FUNCTION ERROR:",
-          error
-        );
-
-        throw new Error(
-          error.message ||
-            "Edge Function request failed."
-        );
-      }
-
-      // ======================================================
-      // RESPONSE ERROR
+      // CREATE PROFILE / USER
       // ======================================================
 
       if (
-        !data ||
-        data.success !== true
+        dialogMode === "add"
       ) {
-        throw new Error(
-          data?.error ||
-            "Password change failed."
-        );
+        await callAdminUser({
+          action: "create",
+
+          username,
+
+          email,
+
+          role:
+            formData.role,
+
+          status:
+            formData.status,
+        });
+
+        toast({
+          title: "Success",
+          description:
+            "User created successfully.",
+        });
       }
 
       // ======================================================
-      // SUCCESS
+      // UPDATE PROFILE
       // ======================================================
 
-      toast({
-        title:
-          "Password changed",
-        description:
-          `Password for ${selectedUser.username} has been changed successfully.`,
-      });
+      else {
+        if (!editingId) {
+          throw new Error(
+            "User ID is missing."
+          );
+        }
 
-      closePasswordDialog();
+        await callAdminUser({
+          action: "update",
+
+          user_id:
+            editingId,
+
+          username,
+
+          email,
+
+          role:
+            formData.role,
+
+          status:
+            formData.status,
+        });
+
+        toast({
+          title: "Success",
+          description:
+            "User updated successfully.",
+        });
+      }
+
+      // ======================================================
+      // CLOSE
+      // ======================================================
+
+      setDialogOpen(false);
+
+      resetForm();
+
+      await fetchUsers();
     } catch (err: any) {
       console.error(
-        "CHANGE PASSWORD ERROR:",
+        "SAVE USER ERROR:",
         err
       );
 
       toast({
-        title:
-          "Failed to change password",
+        title: "Error",
         description:
           err?.message ||
-          "Something went wrong.",
+          "Failed to save user.",
         variant:
           "destructive",
       });
     } finally {
-      setChangingPassword(false);
+      setLoading(false);
     }
   };
 
@@ -538,7 +552,6 @@ const User = () => {
     users.slice(
       (page - 1) *
         rowsPerPage,
-
       page *
         rowsPerPage
     );
@@ -578,47 +591,62 @@ const User = () => {
           User Management
         </h1>
 
-        <XlsxTable
-          data={users}
-          columns={[
-            {
-              header: "ID",
-              key: "id",
-            },
-            {
-              header: "Username",
-              key: "username",
-            },
-            {
-              header: "Email",
-              key: "email",
-            },
-            {
-              header: "Role",
-              key: "role",
-            },
-            {
-              header: "Status",
-              key: "status",
-            },
-            {
-              header: "Created At",
-              key: "created_at",
-            },
-          ]}
-          filename="users.xlsx"
-          className="flex items-center mt-4 lg:mt-0"
-        >
+        <div className="flex flex-wrap gap-3 mt-4 lg:mt-0">
+
           <Button
-            variant="outline"
-            size="sm"
+            onClick={
+              handleAddUser
+            }
+            className="flex items-center"
           >
-            <Download className="mr-2 h-4 w-4" />
+            <Plus className="mr-2 h-4 w-4" />
 
-            Export
+            Add User
           </Button>
-        </XlsxTable>
 
+          <XlsxTable
+            data={users}
+            columns={[
+              {
+                header: "ID",
+                key: "id",
+              },
+              {
+                header: "Username",
+                key: "username",
+              },
+              {
+                header: "Email",
+                key: "email",
+              },
+              {
+                header: "Role",
+                key: "role",
+              },
+              {
+                header: "Status",
+                key: "status",
+              },
+              {
+                header: "Created At",
+                key: "created_at",
+              },
+            ]}
+            filename="users.xlsx"
+            className="flex items-center"
+          >
+            <Button
+              variant="outline"
+              size="sm"
+              className="px-3"
+            >
+              <Download className="mr-2 h-4 w-4" />
+
+              Export
+            </Button>
+          </XlsxTable>
+
+        </div>
       </div>
 
       {/* ====================================================
@@ -628,7 +656,9 @@ const User = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
         <Search
-          value={searchTerm}
+          value={
+            searchTerm
+          }
           onChange={(e) =>
             setSearchTerm(
               e.target.value
@@ -639,7 +669,9 @@ const User = () => {
         />
 
         <Select
-          value={roleFilter}
+          value={
+            roleFilter
+          }
           onValueChange={
             setRoleFilter
           }
@@ -670,7 +702,9 @@ const User = () => {
         </Select>
 
         <Select
-          value={statusFilter}
+          value={
+            statusFilter
+          }
           onValueChange={
             setStatusFilter
           }
@@ -752,7 +786,7 @@ const User = () => {
                 </TableCell>
 
                 <TableCell className="text-center font-semibold">
-                  Password
+                  Actions
                 </TableCell>
 
               </TableRow>
@@ -773,13 +807,17 @@ const User = () => {
                     </TableCell>
 
                     <TableCell>
-                      {u.email || "-"}
+                      {u.email ||
+                        "-"}
                     </TableCell>
 
                     <TableCell>
 
                       <span className="capitalize px-2 py-1 bg-gray-100 rounded text-xs">
-                        {u.role || "staff"}
+
+                        {u.role ||
+                          "staff"}
+
                       </span>
 
                     </TableCell>
@@ -794,7 +832,10 @@ const User = () => {
                             : "bg-red-100 text-red-800"
                         }`}
                       >
-                        {u.status || "active"}
+
+                        {u.status ||
+                          "active"}
+
                       </span>
 
                     </TableCell>
@@ -805,21 +846,34 @@ const User = () => {
                       )}
                     </TableCell>
 
-                    <TableCell className="text-center">
+                    <TableCell className="flex justify-center space-x-2">
 
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
                         onClick={() =>
-                          openPasswordDialog(
+                          handleEditUser(
                             u
                           )
                         }
+                        className="px-3"
                       >
-                        <KeyRound className="h-4 w-4 mr-2" />
+                        <Edit3 className="h-4 w-4" />
+                      </Button>
 
-                        Change Password
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={() =>
+                          handleDeleteUser(
+                            u.id
+                          )
+                        }
+                        className="px-3"
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </Button>
 
                     </TableCell>
@@ -840,7 +894,6 @@ const User = () => {
 
       {!loading &&
         users.length > 0 && (
-
           <Pagination>
 
             <PaginationContent>
@@ -909,39 +962,48 @@ const User = () => {
             </PaginationContent>
 
           </Pagination>
-
         )}
 
       {/* ====================================================
-          CHANGE PASSWORD DIALOG
+          ADD / EDIT DIALOG
       ==================================================== */}
 
       <Dialog
         open={
-          passwordDialogOpen
+          dialogOpen
         }
-        onOpenChange={(
-          open
-        ) => {
-          if (!open) {
-            closePasswordDialog();
+        onOpenChange={
+          (open) => {
+            setDialogOpen(
+              open
+            );
+
+            if (!open) {
+              resetForm();
+            }
           }
-        }}
+        }
       >
 
-        <DialogContent className="w-full max-w-md">
+        <DialogContent className="w-full max-w-md max-h-[90vh] overflow-y-auto">
 
           <DialogHeader>
 
             <DialogTitle>
-              Change Password
+
+              {dialogMode ===
+              "add"
+                ? "Add User"
+                : "Edit User"}
+
             </DialogTitle>
 
             <DialogDescription>
 
-              {selectedUser
-                ? `Change password for ${selectedUser.username}.`
-                : "Change user password."}
+              {dialogMode ===
+              "add"
+                ? "Create a new application user."
+                : "Update user information."}
 
             </DialogDescription>
 
@@ -949,154 +1011,171 @@ const User = () => {
 
           <form
             onSubmit={
-              handleChangePassword
+              handleSubmit
             }
             className="space-y-4 mt-2"
           >
 
             {/* =================================================
-                USER
+                USERNAME
             ================================================= */}
 
             <div>
 
               <label className="block text-sm font-medium mb-1">
-                User
+                Username *
               </label>
 
               <Input
                 value={
-                  selectedUser
-                    ?.username || ""
+                  formData.username
                 }
-                disabled
+                onChange={(e) =>
+                  setFormData(
+                    (prev) => ({
+                      ...prev,
+                      username:
+                        e.target
+                          .value,
+                    })
+                  )
+                }
+                placeholder="Enter username"
+                required
               />
 
             </div>
 
             {/* =================================================
-                PASSWORD
+                EMAIL
             ================================================= */}
 
             <div>
 
               <label className="block text-sm font-medium mb-1">
-                New Password
+                Email *
               </label>
 
-              <div className="relative">
-
-                <Input
-                  type={
-                    showPassword
-                      ? "text"
-                      : "password"
-                  }
-                  value={
-                    newPassword
-                  }
-                  onChange={(e) =>
-                    setNewPassword(
-                      e.target.value
-                    )
-                  }
-                  placeholder="Enter new password"
-                  autoComplete="new-password"
-                  className="pr-10"
-                  disabled={
-                    changingPassword
-                  }
-                  required
-                />
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setShowPassword(
-                      (value) =>
-                        !value
-                    )
-                  }
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
-                  disabled={
-                    changingPassword
-                  }
-                >
-
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-
-                </button>
-
-              </div>
-
-              <p className="text-xs text-gray-500 mt-1">
-                Minimum 8 characters.
-              </p>
+              <Input
+                type="email"
+                value={
+                  formData.email
+                }
+                onChange={(e) =>
+                  setFormData(
+                    (prev) => ({
+                      ...prev,
+                      email:
+                        e.target
+                          .value,
+                    })
+                  )
+                }
+                placeholder="user@example.com"
+                required
+              />
 
             </div>
 
             {/* =================================================
-                CONFIRM
+                ROLE
             ================================================= */}
 
             <div>
 
               <label className="block text-sm font-medium mb-1">
-                Confirm Password
+                Role *
               </label>
 
-              <div className="relative">
+              <Select
+                value={
+                  formData.role
+                }
+                onValueChange={(
+                  value
+                ) =>
+                  setFormData(
+                    (prev) => ({
+                      ...prev,
+                      role:
+                        value,
+                    })
+                  )
+                }
+              >
 
-                <Input
-                  type={
-                    showConfirmPassword
-                      ? "text"
-                      : "password"
-                  }
-                  value={
-                    confirmPassword
-                  }
-                  onChange={(e) =>
-                    setConfirmPassword(
-                      e.target.value
-                    )
-                  }
-                  placeholder="Confirm new password"
-                  autoComplete="new-password"
-                  className="pr-10"
-                  disabled={
-                    changingPassword
-                  }
-                  required
-                />
+                <SelectTrigger className="w-full">
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    setShowConfirmPassword(
-                      (value) =>
-                        !value
-                    )
-                  }
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
-                  disabled={
-                    changingPassword
-                  }
-                >
+                  <SelectValue placeholder="Select role" />
 
-                  {showConfirmPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
+                </SelectTrigger>
 
-                </button>
+                <SelectContent>
 
-              </div>
+                  <SelectItem value="admin">
+                    Admin
+                  </SelectItem>
+
+                  <SelectItem value="manager">
+                    Manager
+                  </SelectItem>
+
+                  <SelectItem value="staff">
+                    Staff
+                  </SelectItem>
+
+                </SelectContent>
+
+              </Select>
+
+            </div>
+
+            {/* =================================================
+                STATUS
+            ================================================= */}
+
+            <div>
+
+              <label className="block text-sm font-medium mb-1">
+                Status *
+              </label>
+
+              <Select
+                value={
+                  formData.status
+                }
+                onValueChange={(
+                  value
+                ) =>
+                  setFormData(
+                    (prev) => ({
+                      ...prev,
+                      status:
+                        value,
+                    })
+                  )
+                }
+              >
+
+                <SelectTrigger className="w-full">
+
+                  <SelectValue placeholder="Select status" />
+
+                </SelectTrigger>
+
+                <SelectContent>
+
+                  <SelectItem value="active">
+                    Active
+                  </SelectItem>
+
+                  <SelectItem value="inactive">
+                    Inactive
+                  </SelectItem>
+
+                </SelectContent>
+
+              </Select>
 
             </div>
 
@@ -1104,16 +1183,18 @@ const User = () => {
                 BUTTON
             ================================================= */}
 
-            <div className="flex justify-end gap-3 pt-4">
+            <div className="flex justify-end space-x-3 pt-4">
 
               <Button
                 type="button"
                 variant="outline"
-                onClick={
-                  closePasswordDialog
+                onClick={() =>
+                  setDialogOpen(
+                    false
+                  )
                 }
                 disabled={
-                  changingPassword
+                  loading
                 }
               >
                 Cancel
@@ -1122,14 +1203,15 @@ const User = () => {
               <Button
                 type="submit"
                 disabled={
-                  changingPassword
+                  loading
                 }
               >
-
-                {changingPassword
-                  ? "Changing..."
-                  : "Change Password"}
-
+                {loading
+                  ? "Saving..."
+                  : dialogMode ===
+                    "add"
+                  ? "Add User"
+                  : "Update User"}
               </Button>
 
             </div>
@@ -1145,3 +1227,4 @@ const User = () => {
 };
 
 export default User;
+```
