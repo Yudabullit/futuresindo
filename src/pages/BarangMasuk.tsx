@@ -52,6 +52,10 @@ interface BarangMasukItem {
   created_at?: string;
 }
 
+const STATUS_MENUNGGU = "Menunggu Konfirmasi";
+const STATUS_DITERIMA = "Barang Diterima";
+const STATUS_TIDAK_DITERIMA = "Tidak Diterima";
+
 const BarangMasuk = () => {
   const [transactions, setTransactions] = useState<BarangMasukItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,13 +79,13 @@ const BarangMasuk = () => {
     qty: 0,
     price: 0,
     total_price: 0,
-    status: "Menunggu Konfirmasi",
+    status: STATUS_MENUNGGU,
     notes: "",
   });
 
-  // ============================================
+  // ============================================================
   // FETCH BARANG MASUK
-  // ============================================
+  // ============================================================
 
   const fetchTransactions = async () => {
     try {
@@ -116,9 +120,9 @@ const BarangMasuk = () => {
     fetchTransactions();
   }, [searchTerm]);
 
-  // ============================================
+  // ============================================================
   // FETCH PRODUCTS
-  // ============================================
+  // ============================================================
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -138,9 +142,9 @@ const BarangMasuk = () => {
     fetchProducts();
   }, []);
 
-  // ============================================
+  // ============================================================
   // PRODUCT CHANGE
-  // ============================================
+  // ============================================================
 
   const handleProductChange = (productId: string) => {
     const p = products.find((prod) => prod.id === productId);
@@ -162,9 +166,9 @@ const BarangMasuk = () => {
     }
   };
 
-  // ============================================
+  // ============================================================
   // QTY CHANGE
-  // ============================================
+  // ============================================================
 
   const handleQtyChange = (qty: number) => {
     setFormData((prev) => ({
@@ -174,9 +178,9 @@ const BarangMasuk = () => {
     }));
   };
 
-  // ============================================
+  // ============================================================
   // PRICE CHANGE
-  // ============================================
+  // ============================================================
 
   const handlePriceChange = (price: number) => {
     setFormData((prev) => ({
@@ -186,9 +190,9 @@ const BarangMasuk = () => {
     }));
   };
 
-  // ============================================
+  // ============================================================
   // ADD TRANSACTION
-  // ============================================
+  // ============================================================
 
   const handleAddTransaction = () => {
     setDialogMode("add");
@@ -204,16 +208,16 @@ const BarangMasuk = () => {
       qty: 0,
       price: 0,
       total_price: 0,
-      status: "Menunggu Konfirmasi",
+      status: STATUS_MENUNGGU,
       notes: "",
     });
 
     setDialogOpen(true);
   };
 
-  // ============================================
+  // ============================================================
   // EDIT TRANSACTION
-  // ============================================
+  // ============================================================
 
   const handleEditTransaction = (
     transaction: BarangMasukItem
@@ -233,10 +237,11 @@ const BarangMasuk = () => {
         transaction.product_name || "",
       product_code:
         transaction.product_code || "",
-      qty: transaction.qty,
-      price: transaction.price,
-      total_price: transaction.total_price,
-      status: transaction.status,
+      qty: Number(transaction.qty || 0),
+      price: Number(transaction.price || 0),
+      total_price: Number(transaction.total_price || 0),
+      status:
+        transaction.status || STATUS_MENUNGGU,
       notes: transaction.notes || "",
     });
 
@@ -244,9 +249,62 @@ const BarangMasuk = () => {
     setDialogOpen(true);
   };
 
-  // ============================================
+  // ============================================================
+  // HELPER: UPDATE PRODUCT STOCK
+  // ============================================================
+
+  const updateProductStock = async (
+    productId: string,
+    amount: number
+  ) => {
+    if (!productId || amount === 0) {
+      return;
+    }
+
+    const {
+      data: product,
+      error: productError,
+    } = await supabase
+      .from("products")
+      .select("qty")
+      .eq("id", productId)
+      .single();
+
+    if (productError) {
+      throw productError;
+    }
+
+    const currentQty = Number(product?.qty || 0);
+
+    const newQty = Math.max(
+      0,
+      currentQty + amount
+    );
+
+    const { error: updateError } =
+      await supabase
+        .from("products")
+        .update({
+          qty: newQty,
+        })
+        .eq("id", productId);
+
+    if (updateError) {
+      throw updateError;
+    }
+  };
+
+  // ============================================================
+  // HELPER: CEK APAKAH STATUS MENAMBAH STOK
+  // ============================================================
+
+  const isReceived = (status: string) => {
+    return status === STATUS_DITERIMA;
+  };
+
+  // ============================================================
   // DELETE TRANSACTION
-  // ============================================
+  // ============================================================
 
   const handleDeleteTransaction = async (
     id: string
@@ -260,7 +318,10 @@ const BarangMasuk = () => {
     }
 
     try {
-      // Ambil transaksi terlebih dahulu
+      // --------------------------------------------------------
+      // AMBIL TRANSAKSI
+      // --------------------------------------------------------
+
       const {
         data: transaction,
         error: fetchError,
@@ -272,7 +333,28 @@ const BarangMasuk = () => {
 
       if (fetchError) throw fetchError;
 
-      // Hapus transaksi
+      // --------------------------------------------------------
+      // KEMBALIKAN STOK HANYA JIKA STATUS DITERIMA
+      // --------------------------------------------------------
+
+      if (
+        transaction?.product_id &&
+        isReceived(transaction.status)
+      ) {
+        const transactionQty = Number(
+          transaction.qty || 0
+        );
+
+        await updateProductStock(
+          transaction.product_id,
+          -transactionQty
+        );
+      }
+
+      // --------------------------------------------------------
+      // HAPUS TRANSAKSI
+      // --------------------------------------------------------
+
       const { error: deleteError } =
         await supabase
           .from("barang_masuk")
@@ -281,49 +363,25 @@ const BarangMasuk = () => {
 
       if (deleteError) throw deleteError;
 
-      // ============================================
-      // KEMBALIKAN STOK PRODUCT
-      // ============================================
-
-      if (transaction?.product_id) {
-        const {
-          data: product,
-          error: productError,
-        } = await supabase
-          .from("products")
-          .select("qty")
-          .eq("id", transaction.product_id)
-          .single();
-
-        if (productError) throw productError;
-
-        const currentQty = Number(product?.qty || 0);
-        const transactionQty = Number(
-          transaction.qty || 0
-        );
-
-        const newQty = Math.max(
-          0,
-          currentQty - transactionQty
-        );
-
-        const { error: updateError } =
-          await supabase
-            .from("products")
-            .update({
-              qty: newQty,
-            })
-            .eq("id", transaction.product_id);
-
-        if (updateError) throw updateError;
-      }
-
       await fetchTransactions();
+
+      // Refresh products
+      const {
+        data: refreshedProducts,
+      } = await supabase
+        .from("products")
+        .select("*");
+
+      setProducts(
+        refreshedProducts || []
+      );
 
       toast({
         title: "Success",
         description:
-          "Transaction deleted and stock restored successfully",
+          isReceived(transaction?.status)
+            ? "Transaction deleted and received stock restored."
+            : "Transaction deleted successfully.",
       });
     } catch (err: any) {
       toast({
@@ -336,9 +394,9 @@ const BarangMasuk = () => {
     }
   };
 
-  // ============================================
+  // ============================================================
   // SUBMIT TRANSACTION
-  // ============================================
+  // ============================================================
 
   const handleSubmit = async (
     e: React.FormEvent
@@ -346,6 +404,10 @@ const BarangMasuk = () => {
     e.preventDefault();
 
     try {
+      // --------------------------------------------------------
+      // VALIDATION
+      // --------------------------------------------------------
+
       if (
         !formData.transaction_number ||
         formData.transaction_number === "BM-"
@@ -382,9 +444,9 @@ const BarangMasuk = () => {
         return;
       }
 
-      // ============================================
-      // ADD
-      // ============================================
+      // ========================================================
+      // ADD TRANSACTION
+      // ========================================================
 
       if (dialogMode === "add") {
         const payload = {
@@ -393,7 +455,10 @@ const BarangMasuk = () => {
             formData.qty * formData.price,
         };
 
-        // Insert transaction
+        // ------------------------------------------------------
+        // INSERT TRANSACTION
+        // ------------------------------------------------------
+
         const {
           data: insertedTransaction,
           error: insertError,
@@ -403,57 +468,49 @@ const BarangMasuk = () => {
           .select()
           .single();
 
-        if (insertError) throw insertError;
+        if (insertError) {
+          throw insertError;
+        }
 
-        // ============================================
-        // TAMBAH STOK PRODUCT SATU KALI
-        // ============================================
+        // ------------------------------------------------------
+        // TAMBAH STOK HANYA JIKA STATUS DITERIMA
+        // ------------------------------------------------------
 
-        const {
-          data: product,
-          error: productError,
-        } = await supabase
-          .from("products")
-          .select("qty")
-          .eq("id", formData.product_id)
-          .single();
+        if (
+          insertedTransaction &&
+          insertedTransaction.product_id &&
+          isReceived(
+            insertedTransaction.status
+          )
+        ) {
+          const incomingQty = Number(
+            insertedTransaction.qty || 0
+          );
 
-        if (productError) throw productError;
-
-        const currentQty = Number(
-          product?.qty || 0
-        );
-
-        const incomingQty = Number(
-          formData.qty || 0
-        );
-
-        const newQty =
-          currentQty + incomingQty;
-
-        const { error: stockError } =
-          await supabase
-            .from("products")
-            .update({
-              qty: newQty,
-            })
-            .eq("id", formData.product_id);
-
-        if (stockError) throw stockError;
+          await updateProductStock(
+            insertedTransaction.product_id,
+            incomingQty
+          );
+        }
 
         toast({
           title: "Success",
           description:
-            `Transaction added. Stock increased by ${incomingQty}.`,
+            isReceived(formData.status)
+              ? `Transaction added. Stock increased by ${formData.qty}.`
+              : "Transaction added. Stock was not changed because the item has not been received.",
         });
       }
 
-      // ============================================
-      // EDIT
-      // ============================================
+      // ========================================================
+      // EDIT TRANSACTION
+      // ========================================================
 
       else if (editingId) {
-        // Ambil data transaksi lama
+        // ------------------------------------------------------
+        // AMBIL TRANSAKSI LAMA
+        // ------------------------------------------------------
+
         const {
           data: oldTransaction,
           error: oldError,
@@ -463,25 +520,34 @@ const BarangMasuk = () => {
           .eq("id", editingId)
           .single();
 
-        if (oldError) throw oldError;
+        if (oldError) {
+          throw oldError;
+        }
+
+        const oldStatus =
+          oldTransaction?.status ||
+          STATUS_MENUNGGU;
+
+        const newStatus =
+          formData.status;
 
         const oldQty = Number(
           oldTransaction?.qty || 0
         );
 
-        const oldProductId =
-          oldTransaction?.product_id;
-
         const newQty = Number(
           formData.qty || 0
         );
 
-        const newProductId =
-          formData.product_id;
+        const oldProductId =
+          oldTransaction?.product_id || "";
 
-        // ============================================
-        // UPDATE TRANSACTION
-        // ============================================
+        const newProductId =
+          formData.product_id || "";
+
+        // ------------------------------------------------------
+        // SIMPAN DATA TRANSAKSI
+        // ------------------------------------------------------
 
         const payload = {
           ...formData,
@@ -495,147 +561,198 @@ const BarangMasuk = () => {
             .update(payload)
             .eq("id", editingId);
 
-        if (updateError) throw updateError;
+        if (updateError) {
+          throw updateError;
+        }
 
-        // ============================================
-        // JIKA PRODUCT SAMA
-        // ============================================
+        // ======================================================
+        // LOGIKA STOK
+        // ======================================================
+
+        // ------------------------------------------------------
+        // KASUS 1:
+        // PRODUK SAMA
+        // ------------------------------------------------------
 
         if (
           oldProductId &&
           oldProductId === newProductId
         ) {
-          const difference =
-            newQty - oldQty;
+          // ----------------------------------------------------
+          // DITERIMA -> DITERIMA
+          // ----------------------------------------------------
+          // TIDAK ADA PERUBAHAN STOK
+          //
+          // Walaupun:
+          // 100 -> 150
+          // 150 -> 200
+          //
+          // Tetap 0.
+          // ----------------------------------------------------
 
-          if (difference !== 0) {
-            const {
-              data: product,
-              error: productError,
-            } = await supabase
-              .from("products")
-              .select("qty")
-              .eq("id", newProductId)
-              .single();
+          if (
+            isReceived(oldStatus) &&
+            isReceived(newStatus)
+          ) {
+            // DO NOTHING
+          }
 
-            if (productError)
-              throw productError;
+          // ----------------------------------------------------
+          // MENUNGGU -> DITERIMA
+          // ----------------------------------------------------
 
-            const currentQty = Number(
-              product?.qty || 0
+          else if (
+            !isReceived(oldStatus) &&
+            isReceived(newStatus)
+          ) {
+            await updateProductStock(
+              newProductId,
+              newQty
             );
+          }
 
-            const updatedQty =
-              currentQty + difference;
+          // ----------------------------------------------------
+          // TIDAK DITERIMA -> DITERIMA
+          // ----------------------------------------------------
 
-            const { error: stockError } =
-              await supabase
-                .from("products")
-                .update({
-                  qty: Math.max(
-                    0,
-                    updatedQty
-                  ),
-                })
-                .eq("id", newProductId);
+          else if (
+            oldStatus ===
+              STATUS_TIDAK_DITERIMA &&
+            newStatus ===
+              STATUS_DITERIMA
+          ) {
+            await updateProductStock(
+              newProductId,
+              newQty
+            );
+          }
 
-            if (stockError)
-              throw stockError;
+          // ----------------------------------------------------
+          // DITERIMA -> MENUNGGU
+          // ----------------------------------------------------
+
+          else if (
+            isReceived(oldStatus) &&
+            newStatus ===
+              STATUS_MENUNGGU
+          ) {
+            await updateProductStock(
+              oldProductId,
+              -oldQty
+            );
+          }
+
+          // ----------------------------------------------------
+          // DITERIMA -> TIDAK DITERIMA
+          // ----------------------------------------------------
+
+          else if (
+            isReceived(oldStatus) &&
+            newStatus ===
+              STATUS_TIDAK_DITERIMA
+          ) {
+            await updateProductStock(
+              oldProductId,
+              -oldQty
+            );
+          }
+
+          // ----------------------------------------------------
+          // MENUNGGU -> MENUNGGU
+          // 0
+          // ----------------------------------------------------
+
+          else if (
+            oldStatus ===
+              STATUS_MENUNGGU &&
+            newStatus ===
+              STATUS_MENUNGGU
+          ) {
+            // DO NOTHING
+          }
+
+          // ----------------------------------------------------
+          // MENUNGGU -> TIDAK DITERIMA
+          // 0
+          // ----------------------------------------------------
+
+          else if (
+            oldStatus ===
+              STATUS_MENUNGGU &&
+            newStatus ===
+              STATUS_TIDAK_DITERIMA
+          ) {
+            // DO NOTHING
+          }
+
+          // ----------------------------------------------------
+          // TIDAK DITERIMA -> MENUNGGU
+          // 0
+          // ----------------------------------------------------
+
+          else if (
+            oldStatus ===
+              STATUS_TIDAK_DITERIMA &&
+            newStatus ===
+              STATUS_MENUNGGU
+          ) {
+            // DO NOTHING
           }
         }
 
-        // ============================================
-        // JIKA PRODUCT DIGANTI
-        // ============================================
+        // ======================================================
+        // KASUS 2:
+        // PRODUK DIGANTI
+        // ======================================================
 
         else {
-          // Kurangi stok product lama
-          if (oldProductId) {
-            const {
-              data: oldProduct,
-              error: oldProductError,
-            } = await supabase
-              .from("products")
-              .select("qty")
-              .eq("id", oldProductId)
-              .single();
+          // ----------------------------------------------------
+          // JIKA TRANSAKSI LAMA SUDAH DITERIMA
+          // KEMBALIKAN STOK PRODUK LAMA
+          // ----------------------------------------------------
 
-            if (oldProductError)
-              throw oldProductError;
-
-            const oldCurrentQty =
-              Number(
-                oldProduct?.qty || 0
-              );
-
-            const restoredQty =
-              Math.max(
-                0,
-                oldCurrentQty - oldQty
-              );
-
-            const {
-              error: restoreError,
-            } = await supabase
-              .from("products")
-              .update({
-                qty: restoredQty,
-              })
-              .eq("id", oldProductId);
-
-            if (restoreError)
-              throw restoreError;
+          if (
+            oldProductId &&
+            isReceived(oldStatus)
+          ) {
+            await updateProductStock(
+              oldProductId,
+              -oldQty
+            );
           }
 
-          // Tambahkan stok product baru
-          if (newProductId) {
-            const {
-              data: newProduct,
-              error: newProductError,
-            } = await supabase
-              .from("products")
-              .select("qty")
-              .eq("id", newProductId)
-              .single();
+          // ----------------------------------------------------
+          // JIKA TRANSAKSI BARU DITERIMA
+          // TAMBAHKAN KE PRODUK BARU
+          // ----------------------------------------------------
 
-            if (newProductError)
-              throw newProductError;
-
-            const newCurrentQty =
-              Number(
-                newProduct?.qty || 0
-              );
-
-            const finalQty =
-              newCurrentQty + newQty;
-
-            const {
-              error: newStockError,
-            } = await supabase
-              .from("products")
-              .update({
-                qty: finalQty,
-              })
-              .eq("id", newProductId);
-
-            if (newStockError)
-              throw newStockError;
+          if (
+            newProductId &&
+            isReceived(newStatus)
+          ) {
+            await updateProductStock(
+              newProductId,
+              newQty
+            );
           }
         }
 
         toast({
           title: "Success",
           description:
-            "Transaction and stock updated successfully",
+            "Transaction updated successfully.",
         });
       }
+
+      // ========================================================
+      // REFRESH
+      // ========================================================
 
       setDialogOpen(false);
       setEditingId(null);
 
       await fetchTransactions();
 
-      // Refresh products supaya stock terbaru terlihat
       const {
         data: refreshedProducts,
       } = await supabase
@@ -646,6 +763,8 @@ const BarangMasuk = () => {
         refreshedProducts || []
       );
     } catch (err: any) {
+      console.error(err);
+
       toast({
         title: "Error",
         description:
@@ -656,9 +775,9 @@ const BarangMasuk = () => {
     }
   };
 
-  // ============================================
+  // ============================================================
   // FORMAT DATE
-  // ============================================
+  // ============================================================
 
   const formatDate = (
     date: string | null | undefined
@@ -674,9 +793,9 @@ const BarangMasuk = () => {
     });
   };
 
-  // ============================================
+  // ============================================================
   // PAGINATION
-  // ============================================
+  // ============================================================
 
   const rowsPerPage = 10;
 
@@ -692,14 +811,17 @@ const BarangMasuk = () => {
       page * rowsPerPage
     );
 
-  // ============================================
+  // ============================================================
   // RETURN
-  // ============================================
+  // ============================================================
 
   return (
     <div className="space-y-6">
 
-      {/* HEADER */}
+      {/* ======================================================
+          HEADER
+      ====================================================== */}
+
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
 
         <div>
@@ -711,7 +833,9 @@ const BarangMasuk = () => {
         <div className="flex flex-wrap gap-3 mt-4 lg:mt-0">
 
           <Button
-            onClick={handleAddTransaction}
+            onClick={
+              handleAddTransaction
+            }
             className="flex items-center"
           >
             <Plus className="mr-2 h-4 w-4" />
@@ -775,7 +899,10 @@ const BarangMasuk = () => {
         </div>
       </div>
 
-      {/* SEARCH */}
+      {/* ======================================================
+          SEARCH
+      ====================================================== */}
+
       <div className="w-full max-w-sm">
         <Search
           value={searchTerm}
@@ -789,14 +916,20 @@ const BarangMasuk = () => {
         />
       </div>
 
-      {/* ERROR */}
+      {/* ======================================================
+          ERROR
+      ====================================================== */}
+
       {error && (
         <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded">
           <p>{error}</p>
         </div>
       )}
 
-      {/* EMPTY */}
+      {/* ======================================================
+          EMPTY
+      ====================================================== */}
+
       {!loading &&
         transactions.length === 0 && (
           <div className="text-center py-10 text-gray-500">
@@ -804,7 +937,10 @@ const BarangMasuk = () => {
           </div>
         )}
 
-      {/* TABLE */}
+      {/* ======================================================
+          TABLE
+      ====================================================== */}
+
       {!loading &&
         transactions.length > 0 && (
           <Table>
@@ -894,15 +1030,15 @@ const BarangMasuk = () => {
                     </TableCell>
 
                     <TableCell className="text-right">
-                      {t.qty?.toLocaleString() ||
-                        "0"}
+                      {Number(
+                        t.qty || 0
+                      ).toLocaleString()}
                     </TableCell>
 
                     <TableCell className="text-right">
                       Rp{" "}
                       {Number(
-                        t.total_price ||
-                          0
+                        t.total_price || 0
                       ).toLocaleString()}
                     </TableCell>
 
@@ -910,10 +1046,10 @@ const BarangMasuk = () => {
                       <span
                         className={`px-2 py-1 rounded-full text-xs font-medium ${
                           t.status ===
-                          "Barang Diterima"
+                          STATUS_DITERIMA
                             ? "bg-green-100 text-green-800"
                             : t.status ===
-                              "Tidak Diterima"
+                              STATUS_TIDAK_DITERIMA
                             ? "bg-red-100 text-red-800"
                             : "bg-yellow-100 text-yellow-800"
                         }`}
@@ -957,10 +1093,14 @@ const BarangMasuk = () => {
               )}
 
             </TableBody>
+
           </Table>
         )}
 
-      {/* PAGINATION */}
+      {/* ======================================================
+          PAGINATION
+      ====================================================== */}
+
       {!loading &&
         transactions.length > 0 && (
           <Pagination>
@@ -1019,7 +1159,10 @@ const BarangMasuk = () => {
           </Pagination>
         )}
 
-      {/* DIALOG */}
+      {/* ======================================================
+          DIALOG
+      ====================================================== */}
+
       <Dialog
         open={dialogOpen}
         onOpenChange={
@@ -1049,6 +1192,7 @@ const BarangMasuk = () => {
           >
 
             {/* TRANSACTION + INVOICE */}
+
             <div className="grid grid-cols-2 gap-4">
 
               <div>
@@ -1114,6 +1258,7 @@ const BarangMasuk = () => {
             </div>
 
             {/* SUPPLIER */}
+
             <div>
 
               <label className="block text-sm font-medium mb-1">
@@ -1137,6 +1282,7 @@ const BarangMasuk = () => {
             </div>
 
             {/* PRODUCT */}
+
             <div>
 
               <label className="block text-sm font-medium mb-1">
@@ -1177,6 +1323,7 @@ const BarangMasuk = () => {
             </div>
 
             {/* QTY PRICE TOTAL */}
+
             <div className="grid grid-cols-3 gap-4">
 
               <div>
@@ -1247,6 +1394,7 @@ const BarangMasuk = () => {
             </div>
 
             {/* STATUS */}
+
             <div>
 
               <label className="block text-sm font-medium mb-1">
@@ -1271,15 +1419,27 @@ const BarangMasuk = () => {
 
                 <SelectContent>
 
-                  <SelectItem value="Menunggu Konfirmasi">
+                  <SelectItem
+                    value={
+                      STATUS_MENUNGGU
+                    }
+                  >
                     Menunggu Konfirmasi
                   </SelectItem>
 
-                  <SelectItem value="Barang Diterima">
+                  <SelectItem
+                    value={
+                      STATUS_DITERIMA
+                    }
+                  >
                     Barang Diterima
                   </SelectItem>
 
-                  <SelectItem value="Tidak Diterima">
+                  <SelectItem
+                    value={
+                      STATUS_TIDAK_DITERIMA
+                    }
+                  >
                     Tidak Diterima
                   </SelectItem>
 
@@ -1290,6 +1450,7 @@ const BarangMasuk = () => {
             </div>
 
             {/* BUTTON */}
+
             <div className="flex justify-end space-x-3 pt-4">
 
               <Button
