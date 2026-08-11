@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -45,13 +45,14 @@ import {
   Edit3,
   Plus,
   Download,
+  X,
 } from "lucide-react";
 
 import { XlsxTable } from "@/components/ui/xlsx-table";
 
 
 // ============================================================
-// TYPE
+// TYPES
 // ============================================================
 
 type DialogMode = "add" | "edit";
@@ -64,10 +65,8 @@ interface Product {
   price: number;
 }
 
-interface FormData {
-  transaction_number: string;
-  customer_name: string;
-  invoice_number: string;
+interface InvoiceLine {
+  id?: string;
 
   product_id: string;
   product_name: string;
@@ -76,10 +75,18 @@ interface FormData {
   qty: number;
   price: number;
   total_price: number;
+}
+
+interface InvoiceForm {
+  transaction_number: string;
+  customer_name: string;
+  invoice_number: string;
 
   payment_method: string;
   status: string;
   notes: string;
+
+  lines: InvoiceLine[];
 }
 
 
@@ -88,56 +95,72 @@ interface FormData {
 // ============================================================
 
 const Penjualan = () => {
+
   // ==========================================================
   // STATE
   // ==========================================================
 
-  const [transactions, setTransactions] = useState<any[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [transactions, setTransactions] =
+    useState<any[]>([]);
 
-  const [loading, setLoading] = useState(true);
-  const [productsLoading, setProductsLoading] = useState(true);
+  const [products, setProducts] =
+    useState<Product[]>([]);
 
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] =
+    useState(true);
 
-  const [searchTerm, setSearchTerm] = useState("");
+  const [productsLoading, setProductsLoading] =
+    useState(true);
 
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [error, setError] =
+    useState<string | null>(null);
+
+  const [searchTerm, setSearchTerm] =
+    useState("");
+
+  const [dialogOpen, setDialogOpen] =
+    useState(false);
+
   const [dialogMode, setDialogMode] =
     useState<DialogMode>("add");
 
   const [editingId, setEditingId] =
     useState<string | null>(null);
 
-  const [page, setPage] = useState(1);
+  const [page, setPage] =
+    useState(1);
 
   const { toast } = useToast();
 
 
   // ==========================================================
-  // FORM DATA
+  // EMPTY FORM
   // ==========================================================
 
-  const emptyFormData = (): FormData => ({
-    transaction_number: "",
+  const createEmptyForm = (): InvoiceForm => ({
+    transaction_number:
+      `PJ-${Date.now()
+        .toString()
+        .slice(-6)}`,
+
     customer_name: "",
+
     invoice_number: "",
 
-    product_id: "",
-    product_name: "",
-    product_code: "",
-
-    qty: 0,
-    price: 0,
-    total_price: 0,
-
     payment_method: "Cash",
+
     status: "Prepared",
+
     notes: "",
+
+    lines: [],
   });
 
+
   const [formData, setFormData] =
-    useState<FormData>(emptyFormData());
+    useState<InvoiceForm>(
+      createEmptyForm()
+    );
 
 
   // ==========================================================
@@ -145,7 +168,9 @@ const Penjualan = () => {
   // ==========================================================
 
   const fetchTransactions = async () => {
+
     try {
+
       setLoading(true);
       setError(null);
 
@@ -157,31 +182,38 @@ const Penjualan = () => {
         });
 
       if (searchTerm.trim()) {
-        const search = searchTerm.trim();
+
+        const search =
+          searchTerm.trim();
 
         query = query.or(
           `transaction_number.ilike.%${search}%,customer_name.ilike.%${search}%,invoice_number.ilike.%${search}%,product_name.ilike.%${search}%,product_code.ilike.%${search}%`
         );
       }
 
-      const { data, error } = await query;
+      const {
+        data,
+        error,
+      } = await query;
 
       if (error) {
         throw error;
       }
 
-      setTransactions(data || []);
+      setTransactions(
+        data || []
+      );
 
     } catch (err: any) {
 
       console.error(
-        "fetchTransactions error:",
+        "fetchTransactions:",
         err
       );
 
       setError(
         err?.message ||
-          "Failed to load sales transactions"
+        "Failed to load transactions"
       );
 
       setTransactions([]);
@@ -199,10 +231,15 @@ const Penjualan = () => {
   // ==========================================================
 
   const fetchProducts = async () => {
+
     try {
+
       setProductsLoading(true);
 
-      const { data, error } = await supabase
+      const {
+        data,
+        error,
+      } = await supabase
         .from("products")
         .select(
           "id, code, description, qty, price"
@@ -222,7 +259,7 @@ const Penjualan = () => {
     } catch (err: any) {
 
       console.error(
-        "fetchProducts error:",
+        "fetchProducts:",
         err
       );
 
@@ -256,35 +293,58 @@ const Penjualan = () => {
   }, []);
 
 
-  // ==========================================================
-  // RESET PAGE WHEN SEARCH CHANGES
-  // ==========================================================
-
   useEffect(() => {
     setPage(1);
   }, [searchTerm]);
 
 
   // ==========================================================
-  // PRODUCT CHANGE
+  // ADD PRODUCT TO CURRENT INVOICE
   // ==========================================================
 
-  const handleProductChange = (
+  const handleAddProductLine = (
     productId: string
   ) => {
 
-    const product = products.find(
-      (p) => p.id === productId
-    );
+    const product =
+      products.find(
+        (p) =>
+          p.id === productId
+      );
 
     if (!product) {
       return;
     }
 
-    setFormData((prev) => ({
-      ...prev,
 
-      product_id: product.id,
+    // --------------------------------------------------------
+    // Prevent duplicate product
+    // --------------------------------------------------------
+
+    const alreadyExists =
+      formData.lines.some(
+        (line) =>
+          line.product_id ===
+          product.id
+      );
+
+    if (alreadyExists) {
+
+      toast({
+        title: "Product already added",
+        description:
+          "Product ini sudah ada di invoice. Ubah Qty pada baris tersebut.",
+        variant: "destructive",
+      });
+
+      return;
+    }
+
+
+    const newLine: InvoiceLine = {
+
+      product_id:
+        product.id,
 
       product_name:
         product.description || "",
@@ -292,64 +352,164 @@ const Penjualan = () => {
       product_code:
         product.code || "",
 
+      qty: 1,
+
       price:
         Number(product.price) || 0,
 
       total_price:
-        (Number(prev.qty) || 0) *
-        (Number(product.price) || 0),
-    }));
+        Number(product.price) || 0,
+    };
+
+
+    setFormData(
+      (prev) => ({
+        ...prev,
+
+        lines: [
+          ...prev.lines,
+          newLine,
+        ],
+      })
+    );
   };
 
 
   // ==========================================================
-  // QTY CHANGE
+  // UPDATE LINE QTY
   // ==========================================================
 
-  const handleQtyChange = (
+  const handleLineQtyChange = (
+    index: number,
     value: string
   ) => {
 
     const qty =
       Number(value) || 0;
 
-    setFormData((prev) => ({
-      ...prev,
+    setFormData(
+      (prev) => {
 
-      qty,
+        const lines =
+          [...prev.lines];
 
-      total_price:
-        qty *
-        (Number(prev.price) || 0),
-    }));
+        const line =
+          lines[index];
+
+        if (!line) {
+          return prev;
+        }
+
+        lines[index] = {
+
+          ...line,
+
+          qty,
+
+          total_price:
+            qty *
+            Number(line.price || 0),
+        };
+
+        return {
+          ...prev,
+          lines,
+        };
+      }
+    );
   };
 
 
   // ==========================================================
-  // PRICE CHANGE
+  // UPDATE LINE PRICE
   // ==========================================================
 
-  const handlePriceChange = (
+  const handleLinePriceChange = (
+    index: number,
     value: string
   ) => {
 
     const price =
       Number(value) || 0;
 
-    setFormData((prev) => ({
-      ...prev,
+    setFormData(
+      (prev) => {
 
-      price,
+        const lines =
+          [...prev.lines];
 
-      total_price:
-        (Number(prev.qty) || 0) *
-        price,
-    }));
+        const line =
+          lines[index];
+
+        if (!line) {
+          return prev;
+        }
+
+        lines[index] = {
+
+          ...line,
+
+          price,
+
+          total_price:
+            Number(line.qty || 0) *
+            price,
+        };
+
+        return {
+          ...prev,
+          lines,
+        };
+      }
+    );
   };
 
 
   // ==========================================================
-  // ADD TRANSACTION
+  // REMOVE PRODUCT LINE FROM NEW INVOICE
+  // ==========================================================
+
+  const handleRemoveProductLine = (
+    index: number
+  ) => {
+
+    setFormData(
+      (prev) => ({
+        ...prev,
+
+        lines:
+          prev.lines.filter(
+            (_, i) =>
+              i !== index
+          ),
+      })
+    );
+  };
+
+
+  // ==========================================================
+  // TOTAL INVOICE
+  // ==========================================================
+
+  const invoiceTotal = useMemo(() => {
+
+    return formData.lines.reduce(
+      (
+        total,
+        line
+      ) =>
+        total +
+        Number(
+          line.total_price || 0
+        ),
+      0
+    );
+
+  }, [formData.lines]);
+
+
+  // ==========================================================
+  // ADD INVOICE
   // ==========================================================
 
   const handleAddTransaction = () => {
@@ -358,37 +518,16 @@ const Penjualan = () => {
 
     setEditingId(null);
 
-    setFormData({
-      transaction_number:
-        `PJ-${Date.now()
-          .toString()
-          .slice(-6)}`,
-
-      customer_name: "",
-
-      invoice_number: "",
-
-      product_id: "",
-      product_name: "",
-      product_code: "",
-
-      qty: 0,
-      price: 0,
-      total_price: 0,
-
-      payment_method: "Cash",
-
-      status: "Prepared",
-
-      notes: "",
-    });
+    setFormData(
+      createEmptyForm()
+    );
 
     setDialogOpen(true);
   };
 
 
   // ==========================================================
-  // EDIT TRANSACTION
+  // EDIT SINGLE TRANSACTION LINE
   // ==========================================================
 
   const handleEditTransaction = (
@@ -401,7 +540,9 @@ const Penjualan = () => {
       transaction.id
     );
 
+
     setFormData({
+
       transaction_number:
         transaction.transaction_number ||
         "",
@@ -414,30 +555,6 @@ const Penjualan = () => {
         transaction.invoice_number ||
         "",
 
-      product_id:
-        transaction.product_id ||
-        "",
-
-      product_name:
-        transaction.product_name ||
-        "",
-
-      product_code:
-        transaction.product_code ||
-        "",
-
-      qty:
-        Number(transaction.qty) ||
-        0,
-
-      price:
-        Number(transaction.price) ||
-        0,
-
-      total_price:
-        Number(transaction.total_price) ||
-        0,
-
       payment_method:
         transaction.payment_method ||
         "Cash",
@@ -449,6 +566,42 @@ const Penjualan = () => {
       notes:
         transaction.notes ||
         "",
+
+      lines: [
+
+        {
+          id:
+            transaction.id,
+
+          product_id:
+            transaction.product_id ||
+            "",
+
+          product_name:
+            transaction.product_name ||
+            "",
+
+          product_code:
+            transaction.product_code ||
+            "",
+
+          qty:
+            Number(
+              transaction.qty
+            ) || 0,
+
+          price:
+            Number(
+              transaction.price
+            ) || 0,
+
+          total_price:
+            Number(
+              transaction.total_price
+            ) || 0,
+        },
+
+      ],
     });
 
     setDialogOpen(true);
@@ -456,7 +609,7 @@ const Penjualan = () => {
 
 
   // ==========================================================
-  // DELETE TRANSACTION
+  // DELETE SINGLE LINE
   // ==========================================================
 
   const handleDeleteTransaction = async (
@@ -465,34 +618,28 @@ const Penjualan = () => {
 
     const confirmed =
       window.confirm(
-        "Are you sure you want to delete this transaction?"
+        "Hapus produk ini dari penjualan?"
       );
 
     if (!confirmed) {
       return;
     }
 
+
     try {
 
       /*
        * IMPORTANT
        *
-       * Kita TIDAK mengubah products.qty di sini.
+       * React TIDAK mengubah products.qty.
        *
-       * DELETE akan ditangani oleh:
+       * DELETE akan masuk ke PostgreSQL trigger.
        *
-       * PostgreSQL trigger
-       *
-       * Jika transaksi sebelumnya sudah
-       * mengurangi stock:
-       *
-       * Sent / Received
-       *       ↓
-       * stock dikembalikan
+       * Jika status Sent/Received:
+       *     stock dikembalikan.
        *
        * Jika Prepared:
-       *       ↓
-       * tidak ada perubahan stock
+       *     stock tidak berubah.
        */
 
       const {
@@ -506,20 +653,22 @@ const Penjualan = () => {
         throw error;
       }
 
+
       await fetchTransactions();
 
       await fetchProducts();
 
+
       toast({
         title: "Success",
         description:
-          "Transaction deleted successfully",
+          "Product line deleted successfully",
       });
 
     } catch (err: any) {
 
       console.error(
-        "delete transaction error:",
+        "delete transaction:",
         err
       );
 
@@ -528,6 +677,403 @@ const Penjualan = () => {
         description:
           err?.message ||
           "Failed to delete transaction",
+        variant: "destructive",
+      });
+    }
+  };
+
+
+  // ==========================================================
+  // SAVE NEW MULTI-PRODUCT INVOICE
+  // ==========================================================
+
+  const handleSaveNewInvoice = async () => {
+
+    // --------------------------------------------------------
+    // Validation
+    // --------------------------------------------------------
+
+    if (
+      !formData.transaction_number.trim()
+    ) {
+
+      toast({
+        title: "Error",
+        description:
+          "Transaction number is required",
+        variant: "destructive",
+      });
+
+      return;
+    }
+
+
+    if (
+      !formData.invoice_number.trim()
+    ) {
+
+      toast({
+        title: "Error",
+        description:
+          "Invoice number is required",
+        variant: "destructive",
+      });
+
+      return;
+    }
+
+
+    if (
+      formData.lines.length === 0
+    ) {
+
+      toast({
+        title: "Error",
+        description:
+          "Tambahkan minimal satu produk",
+        variant: "destructive",
+      });
+
+      return;
+    }
+
+
+    // --------------------------------------------------------
+    // Validate all lines
+    // --------------------------------------------------------
+
+    for (
+      const line of formData.lines
+    ) {
+
+      if (
+        !line.product_id
+      ) {
+
+        toast({
+          title: "Error",
+          description:
+            "Ada product yang belum dipilih",
+          variant: "destructive",
+        });
+
+        return;
+      }
+
+
+      if (
+        !line.qty ||
+        line.qty <= 0
+      ) {
+
+        toast({
+          title: "Error",
+          description:
+            `Qty ${line.product_code} harus lebih dari 0`,
+          variant: "destructive",
+        });
+
+        return;
+      }
+
+
+      if (
+        line.price < 0
+      ) {
+
+        toast({
+          title: "Error",
+          description:
+            `Price ${line.product_code} tidak boleh negatif`,
+          variant: "destructive",
+        });
+
+        return;
+      }
+    }
+
+
+    try {
+
+      /*
+       * ======================================================
+       * MULTI PRODUCT INSERT
+       * ======================================================
+       *
+       * Satu invoice:
+       *
+       * INV-001
+       *     Apel  100
+       *     Jeruk 50
+       *     Mangga 30
+       *
+       * disimpan sebagai beberapa row:
+       *
+       * INV-001 | Apel   | 100
+       * INV-001 | Jeruk  | 50
+       * INV-001 | Mangga | 30
+       *
+       * PostgreSQL trigger menangani stock masing-masing row.
+       *
+       * Tidak ada update products.qty di React.
+       */
+
+
+      const payload = formData.lines.map(
+        (line) => ({
+
+          transaction_number:
+            formData.transaction_number.trim(),
+
+          customer_name:
+            formData.customer_name.trim(),
+
+          invoice_number:
+            formData.invoice_number.trim(),
+
+          product_id:
+            line.product_id,
+
+          product_name:
+            line.product_name,
+
+          product_code:
+            line.product_code,
+
+          qty:
+            Number(line.qty),
+
+          price:
+            Number(line.price),
+
+          total_price:
+            Number(line.qty) *
+            Number(line.price),
+
+          payment_method:
+            formData.payment_method,
+
+          status:
+            formData.status,
+
+          notes:
+            formData.notes.trim(),
+
+        })
+      );
+
+
+      /*
+       * Supabase insert array.
+       *
+       * Semua row dikirim sebagai satu operasi database.
+       *
+       * Jika trigger gagal pada salah satu product
+       * karena stock tidak cukup, operasi database
+       * akan gagal dan tidak menyimpan invoice
+       * secara setengah-setengah.
+       */
+
+      const {
+        error,
+      } = await supabase
+        .from("penjualan")
+        .insert(payload);
+
+      if (error) {
+        throw error;
+      }
+
+
+      toast({
+        title: "Success",
+        description:
+          `${formData.lines.length} product berhasil ditambahkan ke invoice ${formData.invoice_number}`,
+      });
+
+
+      setDialogOpen(false);
+
+      setFormData(
+        createEmptyForm()
+      );
+
+      await fetchTransactions();
+
+      await fetchProducts();
+
+    } catch (err: any) {
+
+      console.error(
+        "save invoice:",
+        err
+      );
+
+      toast({
+        title: "Transaction failed",
+        description:
+          err?.message ||
+          "Failed to save invoice",
+        variant: "destructive",
+      });
+    }
+  };
+
+
+  // ==========================================================
+  // UPDATE SINGLE LINE
+  // ==========================================================
+
+  const handleUpdateLine = async () => {
+
+    if (!editingId) {
+      return;
+    }
+
+
+    const line =
+      formData.lines[0];
+
+    if (!line) {
+      return;
+    }
+
+
+    if (
+      !line.product_id
+    ) {
+
+      toast({
+        title: "Error",
+        description:
+          "Product is required",
+        variant: "destructive",
+      });
+
+      return;
+    }
+
+
+    if (
+      line.qty <= 0
+    ) {
+
+      toast({
+        title: "Error",
+        description:
+          "Qty must be greater than 0",
+        variant: "destructive",
+      });
+
+      return;
+    }
+
+
+    try {
+
+      /*
+       * IMPORTANT:
+       *
+       * Jangan update products.qty.
+       *
+       * Trigger akan menghitung selisih.
+       *
+       * Contoh:
+       *
+       * Sent 100 → Sent 100
+       * = 0
+       *
+       * Sent 100 → Sent 150
+       * = -50
+       *
+       * Sent 150 → Sent 100
+       * = +50
+       */
+
+      const payload = {
+
+        transaction_number:
+          formData.transaction_number.trim(),
+
+        customer_name:
+          formData.customer_name.trim(),
+
+        invoice_number:
+          formData.invoice_number.trim(),
+
+        product_id:
+          line.product_id,
+
+        product_name:
+          line.product_name,
+
+        product_code:
+          line.product_code,
+
+        qty:
+          Number(line.qty),
+
+        price:
+          Number(line.price),
+
+        total_price:
+          Number(line.qty) *
+          Number(line.price),
+
+        payment_method:
+          formData.payment_method,
+
+        status:
+          formData.status,
+
+        notes:
+          formData.notes.trim(),
+      };
+
+
+      const {
+        error,
+      } = await supabase
+        .from("penjualan")
+        .update(payload)
+        .eq("id", editingId);
+
+      if (error) {
+        throw error;
+      }
+
+
+      toast({
+        title: "Success",
+        description:
+          "Sales transaction updated successfully",
+      });
+
+
+      setDialogOpen(false);
+
+      setEditingId(null);
+
+      setFormData(
+        createEmptyForm()
+      );
+
+      await fetchTransactions();
+
+      await fetchProducts();
+
+    } catch (err: any) {
+
+      console.error(
+        "update transaction:",
+        err
+      );
+
+      toast({
+        title: "Error",
+        description:
+          err?.message ||
+          "Failed to update transaction",
         variant: "destructive",
       });
     }
@@ -544,250 +1090,24 @@ const Penjualan = () => {
 
     e.preventDefault();
 
-    // --------------------------------------------------------
-    // VALIDATION
-    // --------------------------------------------------------
 
-    if (!formData.transaction_number.trim()) {
+    if (
+      dialogMode === "add"
+    ) {
 
-      toast({
-        title: "Error",
-        description:
-          "Transaction number is required",
-        variant: "destructive",
-      });
-
-      return;
-    }
-
-
-    if (!formData.product_id) {
-
-      toast({
-        title: "Error",
-        description:
-          "Please select a product",
-        variant: "destructive",
-      });
+      await handleSaveNewInvoice();
 
       return;
     }
 
 
     if (
-      !formData.qty ||
-      formData.qty <= 0
+      dialogMode === "edit"
     ) {
 
-      toast({
-        title: "Error",
-        description:
-          "Quantity must be greater than 0",
-        variant: "destructive",
-      });
+      await handleUpdateLine();
 
       return;
-    }
-
-
-    if (
-      formData.price < 0
-    ) {
-
-      toast({
-        title: "Error",
-        description:
-          "Price cannot be negative",
-        variant: "destructive",
-      });
-
-      return;
-    }
-
-
-    // --------------------------------------------------------
-    // TOTAL PRICE
-    // --------------------------------------------------------
-
-    const totalPrice =
-      Number(formData.qty) *
-      Number(formData.price);
-
-
-    try {
-
-      // ======================================================
-      // IMPORTANT
-      //
-      // Jangan masukkan products.qty ke payload.
-      //
-      // React hanya menyimpan transaksi.
-      //
-      // Stock diatur oleh PostgreSQL trigger.
-      // ======================================================
-
-      const payload = {
-        transaction_number:
-          formData.transaction_number.trim(),
-
-        customer_name:
-          formData.customer_name.trim(),
-
-        invoice_number:
-          formData.invoice_number.trim(),
-
-        product_id:
-          formData.product_id,
-
-        product_name:
-          formData.product_name,
-
-        product_code:
-          formData.product_code,
-
-        qty:
-          Number(formData.qty),
-
-        price:
-          Number(formData.price),
-
-        total_price:
-          totalPrice,
-
-        payment_method:
-          formData.payment_method,
-
-        status:
-          formData.status,
-
-        notes:
-          formData.notes.trim(),
-      };
-
-
-      // ======================================================
-      // ADD
-      // ======================================================
-
-      if (
-        dialogMode === "add"
-      ) {
-
-        /*
-         * INSERT hanya ke penjualan.
-         *
-         * Jangan update products di sini.
-         *
-         * Trigger database yang menentukan:
-         *
-         * Prepared  = 0
-         * Sent      = -Qty
-         * Received  = -Qty
-         */
-
-        const {
-          error,
-        } = await supabase
-          .from("penjualan")
-          .insert(payload);
-
-        if (error) {
-          throw error;
-        }
-
-
-        toast({
-          title: "Success",
-          description:
-            "Sales transaction added successfully",
-        });
-      }
-
-
-      // ======================================================
-      // EDIT
-      // ======================================================
-
-      else if (
-        dialogMode === "edit" &&
-        editingId
-      ) {
-
-        /*
-         * UPDATE hanya mengubah row penjualan.
-         *
-         * PostgreSQL trigger akan menghitung
-         * perubahan stock berdasarkan OLD dan NEW.
-         *
-         * Contoh:
-         *
-         * Sent → Sent
-         * 100 → 100
-         * = 0
-         *
-         * Received → Received
-         * 100 → 100
-         * = 0
-         *
-         * Sent → Prepared
-         * 100 → 100
-         * = +100
-         *
-         * Prepared → Sent
-         * 100 → 100
-         * = -100
-         */
-
-        const {
-          error,
-        } = await supabase
-          .from("penjualan")
-          .update(payload)
-          .eq("id", editingId);
-
-        if (error) {
-          throw error;
-        }
-
-
-        toast({
-          title: "Success",
-          description:
-            "Sales transaction updated successfully",
-        });
-      }
-
-
-      // ======================================================
-      // CLOSE + REFRESH
-      // ======================================================
-
-      setDialogOpen(false);
-
-      setEditingId(null);
-
-      await fetchTransactions();
-
-      /*
-       * Refresh product list supaya Stock di
-       * dropdown langsung mengikuti products.qty terbaru.
-       */
-      await fetchProducts();
-
-    } catch (err: any) {
-
-      console.error(
-        "save transaction error:",
-        err
-      );
-
-      toast({
-        title: "Error",
-        description:
-          err?.message ||
-          "Failed to save transaction",
-        variant: "destructive",
-      });
     }
   };
 
@@ -797,7 +1117,10 @@ const Penjualan = () => {
   // ==========================================================
 
   const formatDate = (
-    date: string | null | undefined
+    date:
+      | string
+      | null
+      | undefined
   ) => {
 
     if (!date) {
@@ -826,6 +1149,110 @@ const Penjualan = () => {
 
 
   // ==========================================================
+  // GROUP TRANSACTIONS BY INVOICE
+  // ==========================================================
+
+  const groupedTransactions =
+    useMemo(() => {
+
+      const groups =
+        new Map<string, any>();
+
+
+      transactions.forEach(
+        (transaction) => {
+
+          /*
+           * invoice_number menjadi identitas group.
+           *
+           * Kalau invoice kosong,
+           * gunakan transaction_number.
+           */
+
+          const key =
+            transaction.invoice_number?.trim() ||
+            transaction.transaction_number ||
+            transaction.id;
+
+
+          if (
+            !groups.has(key)
+          ) {
+
+            groups.set(
+              key,
+              {
+                key,
+
+                invoice_number:
+                  transaction.invoice_number ||
+                  "-",
+
+                transaction_number:
+                  transaction.transaction_number ||
+                  "-",
+
+                customer_name:
+                  transaction.customer_name ||
+                  "-",
+
+                created_at:
+                  transaction.created_at,
+
+                payment_method:
+                  transaction.payment_method ||
+                  "-",
+
+                status:
+                  transaction.status ||
+                  "-",
+
+                notes:
+                  transaction.notes ||
+                  "",
+
+                lines: [],
+
+                total_qty: 0,
+
+                total_price: 0,
+              }
+            );
+          }
+
+
+          const group =
+            groups.get(key);
+
+
+          group.lines.push(
+            transaction
+          );
+
+
+          group.total_qty +=
+            Number(
+              transaction.qty || 0
+            );
+
+
+          group.total_price +=
+            Number(
+              transaction.total_price ||
+              0
+            );
+        }
+      );
+
+
+      return Array.from(
+        groups.values()
+      );
+
+    }, [transactions]);
+
+
+  // ==========================================================
   // PAGINATION
   // ==========================================================
 
@@ -833,12 +1260,13 @@ const Penjualan = () => {
 
   const totalPages =
     Math.ceil(
-      transactions.length /
-        rowsPerPage
+      groupedTransactions.length /
+      rowsPerPage
     ) || 1;
 
-  const paginatedTransactions =
-    transactions.slice(
+
+  const paginatedInvoices =
+    groupedTransactions.slice(
       (page - 1) *
         rowsPerPage,
 
@@ -858,19 +1286,15 @@ const Penjualan = () => {
     switch (status) {
 
       case "Received":
-
         return "bg-green-100 text-green-800";
 
       case "Sent":
-
         return "bg-yellow-100 text-yellow-800";
 
       case "Prepared":
-
         return "bg-blue-100 text-blue-800";
 
       default:
-
         return "bg-gray-100 text-gray-800";
     }
   };
@@ -887,19 +1311,15 @@ const Penjualan = () => {
     switch (payment) {
 
       case "Cash":
-
         return "bg-blue-100 text-blue-800";
 
       case "Transfer":
-
         return "bg-green-100 text-green-800";
 
       case "Credit":
-
         return "bg-yellow-100 text-yellow-800";
 
       default:
-
         return "bg-gray-100 text-gray-800";
     }
   };
@@ -910,6 +1330,7 @@ const Penjualan = () => {
   // ==========================================================
 
   return (
+
     <div className="space-y-6">
 
       {/* ====================================================
@@ -925,7 +1346,7 @@ const Penjualan = () => {
           </h1>
 
           <p className="text-sm text-gray-500 mt-1">
-            Manage sales transactions and inventory
+            Manage sales invoices and inventory
           </p>
 
         </div>
@@ -933,32 +1354,30 @@ const Penjualan = () => {
 
         <div className="flex flex-wrap gap-3 mt-4 lg:mt-0">
 
-          {/* ==================================================
-              ADD BUTTON
-          ================================================== */}
+          {/* ADD */}
 
           <Button
             onClick={
               handleAddTransaction
             }
-            className="flex items-center"
           >
+
             <Plus className="mr-2 h-4 w-4" />
 
             Tambah Penjualan
+
           </Button>
 
 
-          {/* ==================================================
-              EXPORT
-          ================================================== */}
+          {/* EXPORT */}
 
           <XlsxTable
             data={transactions}
             columns={[
+
               {
                 header:
-                  "Nomor Transaksi",
+                  "Transaction No",
                 key:
                   "transaction_number",
               },
@@ -1021,7 +1440,7 @@ const Penjualan = () => {
 
               {
                 header:
-                  "Payment Method",
+                  "Payment",
                 key:
                   "payment_method",
               },
@@ -1032,19 +1451,20 @@ const Penjualan = () => {
                 key:
                   "status",
               },
+
             ]}
             filename="penjualan.xlsx"
-            className="flex items-center"
           >
 
             <Button
               variant="outline"
               size="sm"
-              className="px-3"
             >
+
               <Download className="mr-2 h-4 w-4" />
 
               Export
+
             </Button>
 
           </XlsxTable>
@@ -1067,7 +1487,7 @@ const Penjualan = () => {
               e.target.value
             )
           }
-          placeholder="Search sales..."
+          placeholder="Search invoice, customer, product..."
           className="w-full"
         />
 
@@ -1082,7 +1502,7 @@ const Penjualan = () => {
 
         <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded">
 
-          <p>{error}</p>
+          {error}
 
         </div>
 
@@ -1097,7 +1517,7 @@ const Penjualan = () => {
 
         <div className="text-center py-10 text-gray-500">
 
-          Loading transactions...
+          Loading...
 
         </div>
 
@@ -1109,7 +1529,7 @@ const Penjualan = () => {
       ==================================================== */}
 
       {!loading &&
-        transactions.length === 0 && (
+        groupedTransactions.length === 0 && (
 
           <div className="text-center py-10 text-gray-500">
 
@@ -1121,11 +1541,11 @@ const Penjualan = () => {
 
 
       {/* ====================================================
-          TABLE
+          INVOICE TABLE
       ==================================================== */}
 
       {!loading &&
-        transactions.length > 0 && (
+        groupedTransactions.length > 0 && (
 
           <div className="overflow-x-auto">
 
@@ -1136,7 +1556,11 @@ const Penjualan = () => {
                 <TableRow>
 
                   <TableCell className="font-semibold">
-                    Transaction No
+                    Invoice
+                  </TableCell>
+
+                  <TableCell className="font-semibold">
+                    Transaction
                   </TableCell>
 
                   <TableCell className="font-semibold">
@@ -1144,23 +1568,15 @@ const Penjualan = () => {
                   </TableCell>
 
                   <TableCell className="font-semibold">
-                    Invoice
+                    Date
                   </TableCell>
 
                   <TableCell className="font-semibold">
-                    Tanggal
-                  </TableCell>
-
-                  <TableCell className="font-semibold">
-                    Product Name
-                  </TableCell>
-
-                  <TableCell className="font-semibold">
-                    Code
+                    Products
                   </TableCell>
 
                   <TableCell className="text-right font-semibold">
-                    Qty
+                    Total Qty
                   </TableCell>
 
                   <TableCell className="text-right font-semibold">
@@ -1175,10 +1591,6 @@ const Penjualan = () => {
                     Status
                   </TableCell>
 
-                  <TableCell className="text-center font-semibold">
-                    Actions
-                  </TableCell>
-
                 </TableRow>
 
               </TableHeader>
@@ -1186,22 +1598,32 @@ const Penjualan = () => {
 
               <TableBody>
 
-                {paginatedTransactions.map(
-                  (transaction) => (
+                {paginatedInvoices.map(
+                  (invoice) => (
 
                     <TableRow
                       key={
-                        transaction.id
+                        invoice.key
                       }
                     >
 
-                      {/* TRANSACTION */}
+                      {/* INVOICE */}
 
-                      <TableCell className="font-medium">
+                      <TableCell className="font-semibold align-top">
 
                         {
-                          transaction.transaction_number ||
-                          "-"
+                          invoice.invoice_number
+                        }
+
+                      </TableCell>
+
+
+                      {/* TRANSACTION */}
+
+                      <TableCell className="align-top">
+
+                        {
+                          invoice.transaction_number
                         }
 
                       </TableCell>
@@ -1209,23 +1631,10 @@ const Penjualan = () => {
 
                       {/* CUSTOMER */}
 
-                      <TableCell>
+                      <TableCell className="align-top">
 
                         {
-                          transaction.customer_name ||
-                          "-"
-                        }
-
-                      </TableCell>
-
-
-                      {/* INVOICE */}
-
-                      <TableCell>
-
-                        {
-                          transaction.invoice_number ||
-                          "-"
+                          invoice.customer_name
                         }
 
                       </TableCell>
@@ -1233,45 +1642,115 @@ const Penjualan = () => {
 
                       {/* DATE */}
 
-                      <TableCell>
+                      <TableCell className="align-top">
 
                         {formatDate(
-                          transaction.created_at
+                          invoice.created_at
                         )}
 
                       </TableCell>
 
 
-                      {/* PRODUCT */}
+                      {/* PRODUCTS */}
 
                       <TableCell>
 
-                        {
-                          transaction.product_name ||
-                          "-"
-                        }
+                        <div className="space-y-1">
+
+                          {invoice.lines.map(
+                            (
+                              line: any
+                            ) => (
+
+                              <div
+                                key={
+                                  line.id
+                                }
+                                className="flex items-center gap-3"
+                              >
+
+                                <div className="min-w-0">
+
+                                  <div className="font-medium">
+
+                                    {
+                                      line.product_name
+                                    }
+
+                                  </div>
+
+                                  <div className="text-xs text-gray-500">
+
+                                    {
+                                      line.product_code
+                                    }
+
+                                    {" × "}
+
+                                    {
+                                      Number(
+                                        line.qty
+                                      ).toLocaleString(
+                                        "id-ID"
+                                      )
+                                    }
+
+                                  </div>
+
+                                </div>
+
+
+                                {/* EDIT */}
+
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 w-7 p-0"
+                                  onClick={() =>
+                                    handleEditTransaction(
+                                      line
+                                    )
+                                  }
+                                >
+
+                                  <Edit3 className="h-3.5 w-3.5" />
+
+                                </Button>
+
+
+                                {/* DELETE */}
+
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  className="h-7 w-7 p-0"
+                                  onClick={() =>
+                                    handleDeleteTransaction(
+                                      line.id
+                                    )
+                                  }
+                                >
+
+                                  <Trash2 className="h-3.5 w-3.5" />
+
+                                </Button>
+
+                              </div>
+
+                            )
+                          )}
+
+                        </div>
 
                       </TableCell>
 
 
-                      {/* CODE */}
+                      {/* TOTAL QTY */}
 
-                      <TableCell>
-
-                        {
-                          transaction.product_code ||
-                          "-"
-                        }
-
-                      </TableCell>
-
-
-                      {/* QTY */}
-
-                      <TableCell className="text-right">
+                      <TableCell className="text-right align-top font-semibold">
 
                         {Number(
-                          transaction.qty || 0
+                          invoice.total_qty
                         ).toLocaleString(
                           "id-ID"
                         )}
@@ -1279,15 +1758,14 @@ const Penjualan = () => {
                       </TableCell>
 
 
-                      {/* TOTAL */}
+                      {/* TOTAL PRICE */}
 
-                      <TableCell className="text-right">
+                      <TableCell className="text-right align-top font-semibold">
 
                         Rp{" "}
 
                         {Number(
-                          transaction.total_price ||
-                            0
+                          invoice.total_price
                         ).toLocaleString(
                           "id-ID"
                         )}
@@ -1297,17 +1775,16 @@ const Penjualan = () => {
 
                       {/* PAYMENT */}
 
-                      <TableCell>
+                      <TableCell className="align-top">
 
                         <span
                           className={`px-2 py-1 rounded text-xs ${getPaymentClass(
-                            transaction.payment_method
+                            invoice.payment_method
                           )}`}
                         >
 
                           {
-                            transaction.payment_method ||
-                            "-"
+                            invoice.payment_method
                           }
 
                         </span>
@@ -1317,66 +1794,19 @@ const Penjualan = () => {
 
                       {/* STATUS */}
 
-                      <TableCell>
+                      <TableCell className="align-top">
 
                         <span
                           className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusClass(
-                            transaction.status
+                            invoice.status
                           )}`}
                         >
 
                           {
-                            transaction.status ||
-                            "-"
+                            invoice.status
                           }
 
                         </span>
-
-                      </TableCell>
-
-
-                      {/* ACTIONS */}
-
-                      <TableCell>
-
-                        <div className="flex justify-center space-x-2">
-
-                          {/* EDIT */}
-
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              handleEditTransaction(
-                                transaction
-                              )
-                            }
-                            className="px-3"
-                          >
-
-                            <Edit3 className="h-4 w-4" />
-
-                          </Button>
-
-
-                          {/* DELETE */}
-
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() =>
-                              handleDeleteTransaction(
-                                transaction.id
-                              )
-                            }
-                            className="px-3"
-                          >
-
-                            <Trash2 className="h-4 w-4" />
-
-                          </Button>
-
-                        </div>
 
                       </TableCell>
 
@@ -1399,7 +1829,7 @@ const Penjualan = () => {
       ==================================================== */}
 
       {!loading &&
-        transactions.length > 0 && (
+        groupedTransactions.length > 0 && (
 
           <Pagination>
 
@@ -1409,11 +1839,12 @@ const Penjualan = () => {
 
                 <PaginationPrevious
                   onClick={() =>
-                    setPage((p) =>
-                      Math.max(
-                        p - 1,
-                        1
-                      )
+                    setPage(
+                      (p) =>
+                        Math.max(
+                          p - 1,
+                          1
+                        )
                     )
                   }
                 />
@@ -1457,11 +1888,12 @@ const Penjualan = () => {
 
                 <PaginationNext
                   onClick={() =>
-                    setPage((p) =>
-                      Math.min(
-                        p + 1,
-                        totalPages
-                      )
+                    setPage(
+                      (p) =>
+                        Math.min(
+                          p + 1,
+                          totalPages
+                        )
                     )
                   }
                 />
@@ -1476,7 +1908,7 @@ const Penjualan = () => {
 
 
       {/* ====================================================
-          DIALOG
+          ADD / EDIT DIALOG
       ==================================================== */}
 
       <Dialog
@@ -1486,44 +1918,43 @@ const Penjualan = () => {
         }
       >
 
-        <DialogContent className="w-full max-w-lg">
+        <DialogContent className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
 
           <DialogHeader>
 
             <DialogTitle>
 
-              {dialogMode ===
-              "add"
-                ? "Add Sales Transaction"
-                : "Edit Sales Transaction"}
+              {dialogMode === "add"
+                ? "Tambah Penjualan"
+                : "Edit Produk Penjualan"}
 
             </DialogTitle>
 
             <DialogDescription>
 
-              Fill in transaction details below
+              {dialogMode === "add"
+                ? "Tambahkan beberapa produk dalam satu invoice."
+                : "Edit detail produk penjualan."}
 
             </DialogDescription>
 
           </DialogHeader>
 
 
-          {/* ==================================================
-              FORM
-          ================================================== */}
-
           <form
             onSubmit={
               handleSubmit
             }
-            className="space-y-4"
+            className="space-y-5"
           >
 
             {/* =================================================
-                TRANSACTION + CUSTOMER
+                HEADER INVOICE
             ================================================= */}
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+              {/* TRANSACTION */}
 
               <div>
 
@@ -1553,11 +1984,13 @@ const Penjualan = () => {
               </div>
 
 
+              {/* CUSTOMER */}
+
               <div>
 
                 <label className="block text-sm font-medium mb-1">
 
-                  Customer Name
+                  Customer
 
                 </label>
 
@@ -1580,199 +2013,33 @@ const Penjualan = () => {
 
               </div>
 
-            </div>
 
-
-            {/* =================================================
-                INVOICE
-            ================================================= */}
-
-            <div>
-
-              <label className="block text-sm font-medium mb-1">
-
-                Invoice
-
-              </label>
-
-              <Input
-                value={
-                  formData.invoice_number
-                }
-                onChange={(e) =>
-                  setFormData(
-                    (prev) => ({
-                      ...prev,
-
-                      invoice_number:
-                        e.target.value,
-                    })
-                  )
-                }
-                placeholder="Invoice number"
-              />
-
-            </div>
-
-
-            {/* =================================================
-                PRODUCT
-            ================================================= */}
-
-            <div>
-
-              <label className="block text-sm font-medium mb-1">
-
-                Select Product *
-
-              </label>
-
-              <Select
-                value={
-                  formData.product_id
-                }
-                onValueChange={
-                  handleProductChange
-                }
-                disabled={
-                  productsLoading
-                }
-              >
-
-                <SelectTrigger className="w-full">
-
-                  <SelectValue
-                    placeholder={
-                      productsLoading
-                        ? "Loading products..."
-                        : "Choose a product"
-                    }
-                  />
-
-                </SelectTrigger>
-
-
-                <SelectContent>
-
-                  {products.map(
-                    (product) => (
-
-                      <SelectItem
-                        key={
-                          product.id
-                        }
-                        value={
-                          product.id
-                        }
-                      >
-
-                        {product.code}
-
-                        {" - "}
-
-                        {product.description}
-
-                        {" (Stock: "}
-
-                        {Number(
-                          product.qty || 0
-                        ).toLocaleString(
-                          "id-ID"
-                        )}
-
-                        {")"}
-
-                      </SelectItem>
-
-                    )
-                  )}
-
-                </SelectContent>
-
-              </Select>
-
-            </div>
-
-
-            {/* =================================================
-                QTY / PRICE / TOTAL
-            ================================================= */}
-
-            <div className="grid grid-cols-3 gap-4">
-
-              {/* QTY */}
+              {/* INVOICE */}
 
               <div>
 
                 <label className="block text-sm font-medium mb-1">
 
-                  Qty *
+                  Invoice *
 
                 </label>
 
                 <Input
-                  type="number"
-                  min="1"
-                  step="1"
                   value={
-                    formData.qty || ""
+                    formData.invoice_number
                   }
                   onChange={(e) =>
-                    handleQtyChange(
-                      e.target.value
+                    setFormData(
+                      (prev) => ({
+                        ...prev,
+
+                        invoice_number:
+                          e.target.value,
+                      })
                     )
                   }
+                  placeholder="INV-001"
                   required
-                />
-
-              </div>
-
-
-              {/* PRICE */}
-
-              <div>
-
-                <label className="block text-sm font-medium mb-1">
-
-                  Price *
-
-                </label>
-
-                <Input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={
-                    formData.price
-                  }
-                  onChange={(e) =>
-                    handlePriceChange(
-                      e.target.value
-                    )
-                  }
-                  required
-                />
-
-              </div>
-
-
-              {/* TOTAL */}
-
-              <div>
-
-                <label className="block text-sm font-medium mb-1">
-
-                  Total Price
-
-                </label>
-
-                <Input
-                  type="number"
-                  value={
-                    formData.total_price
-                  }
-                  disabled
-                  className="bg-gray-100"
                 />
 
               </div>
@@ -1784,7 +2051,7 @@ const Penjualan = () => {
                 PAYMENT + STATUS
             ================================================= */}
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
               {/* PAYMENT */}
 
@@ -1814,9 +2081,9 @@ const Penjualan = () => {
                   }
                 >
 
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger>
 
-                    <SelectValue placeholder="Payment" />
+                    <SelectValue />
 
                   </SelectTrigger>
 
@@ -1824,23 +2091,15 @@ const Penjualan = () => {
                   <SelectContent>
 
                     <SelectItem value="Cash">
-
                       Cash
-
                     </SelectItem>
-
 
                     <SelectItem value="Transfer">
-
                       Transfer
-
                     </SelectItem>
 
-
                     <SelectItem value="Credit">
-
                       Credit
-
                     </SelectItem>
 
                   </SelectContent>
@@ -1878,9 +2137,9 @@ const Penjualan = () => {
                   }
                 >
 
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger>
 
-                    <SelectValue placeholder="Status" />
+                    <SelectValue />
 
                   </SelectTrigger>
 
@@ -1888,23 +2147,15 @@ const Penjualan = () => {
                   <SelectContent>
 
                     <SelectItem value="Prepared">
-
                       Prepared
-
                     </SelectItem>
-
 
                     <SelectItem value="Sent">
-
                       Sent
-
                     </SelectItem>
 
-
                     <SelectItem value="Received">
-
                       Received
-
                     </SelectItem>
 
                   </SelectContent>
@@ -1914,6 +2165,386 @@ const Penjualan = () => {
               </div>
 
             </div>
+
+
+            {/* =================================================
+                ADD PRODUCT
+            ================================================= */}
+
+            {dialogMode === "add" && (
+
+              <div className="border rounded-lg p-4 space-y-3">
+
+                <div>
+
+                  <label className="block text-sm font-medium mb-1">
+
+                    Tambah Product
+
+                  </label>
+
+                  <Select
+                    value=""
+                    onValueChange={
+                      handleAddProductLine
+                    }
+                    disabled={
+                      productsLoading
+                    }
+                  >
+
+                    <SelectTrigger>
+
+                      <SelectValue
+                        placeholder={
+                          productsLoading
+                            ? "Loading products..."
+                            : "Pilih product untuk invoice"
+                        }
+                      />
+
+                    </SelectTrigger>
+
+
+                    <SelectContent>
+
+                      {products.map(
+                        (product) => (
+
+                          <SelectItem
+                            key={
+                              product.id
+                            }
+                            value={
+                              product.id
+                            }
+                          >
+
+                            {product.code}
+
+                            {" - "}
+
+                            {
+                              product.description
+                            }
+
+                            {" | Stock: "}
+
+                            {Number(
+                              product.qty ||
+                              0
+                            ).toLocaleString(
+                              "id-ID"
+                            )}
+
+                          </SelectItem>
+
+                        )
+                      )}
+
+                    </SelectContent>
+
+                  </Select>
+
+                </div>
+
+
+                {/* =================================================
+                    PRODUCT LINES
+                ================================================= */}
+
+                {formData.lines.length === 0 && (
+
+                  <div className="text-center py-6 text-sm text-gray-500">
+
+                    Belum ada product.
+                    Pilih product di atas.
+
+                  </div>
+
+                )}
+
+
+                {formData.lines.length > 0 && (
+
+                  <div className="border rounded-lg overflow-x-auto">
+
+                    <Table>
+
+                      <TableHeader>
+
+                        <TableRow>
+
+                          <TableCell>
+                            Product
+                          </TableCell>
+
+                          <TableCell>
+                            Code
+                          </TableCell>
+
+                          <TableCell className="w-28">
+                            Qty
+                          </TableCell>
+
+                          <TableCell className="w-40">
+                            Price
+                          </TableCell>
+
+                          <TableCell className="text-right">
+                            Total
+                          </TableCell>
+
+                          <TableCell className="w-12">
+                          </TableCell>
+
+                        </TableRow>
+
+                      </TableHeader>
+
+
+                      <TableBody>
+
+                        {formData.lines.map(
+                          (
+                            line,
+                            index
+                          ) => (
+
+                            <TableRow
+                              key={
+                                line.product_id
+                              }
+                            >
+
+                              <TableCell>
+
+                                <div className="font-medium">
+
+                                  {
+                                    line.product_name
+                                  }
+
+                                </div>
+
+                              </TableCell>
+
+
+                              <TableCell>
+
+                                {
+                                  line.product_code
+                                }
+
+                              </TableCell>
+
+
+                              {/* QTY */}
+
+                              <TableCell>
+
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  step="1"
+                                  value={
+                                    line.qty
+                                  }
+                                  onChange={(
+                                    e
+                                  ) =>
+                                    handleLineQtyChange(
+                                      index,
+                                      e.target.value
+                                    )
+                                  }
+                                />
+
+                              </TableCell>
+
+
+                              {/* PRICE */}
+
+                              <TableCell>
+
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="1"
+                                  value={
+                                    line.price
+                                  }
+                                  onChange={(
+                                    e
+                                  ) =>
+                                    handleLinePriceChange(
+                                      index,
+                                      e.target.value
+                                    )
+                                  }
+                                />
+
+                              </TableCell>
+
+
+                              {/* TOTAL */}
+
+                              <TableCell className="text-right font-medium">
+
+                                Rp{" "}
+
+                                {Number(
+                                  line.total_price
+                                ).toLocaleString(
+                                  "id-ID"
+                                )}
+
+                              </TableCell>
+
+
+                              {/* REMOVE */}
+
+                              <TableCell>
+
+                                <Button
+                                  type="button"
+                                  variant="destructive"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={() =>
+                                    handleRemoveProductLine(
+                                      index
+                                    )
+                                  }
+                                >
+
+                                  <X className="h-4 w-4" />
+
+                                </Button>
+
+                              </TableCell>
+
+                            </TableRow>
+
+                          )
+                        )}
+
+                      </TableBody>
+
+                    </Table>
+
+                  </div>
+
+                )}
+
+              </div>
+
+            )}
+
+
+            {/* =================================================
+                EDIT MODE
+            ================================================= */}
+
+            {dialogMode === "edit" && (
+
+              <div className="border rounded-lg p-4">
+
+                {formData.lines.map(
+                  (
+                    line,
+                    index
+                  ) => (
+
+                    <div
+                      key={
+                        line.id ||
+                        line.product_id
+                      }
+                      className="grid grid-cols-1 md:grid-cols-3 gap-4"
+                    >
+
+                      <div>
+
+                        <label className="block text-sm font-medium mb-1">
+
+                          Product
+
+                        </label>
+
+                        <Input
+                          value={
+                            `${line.product_code} - ${line.product_name}`
+                          }
+                          disabled
+                        />
+
+                      </div>
+
+
+                      <div>
+
+                        <label className="block text-sm font-medium mb-1">
+
+                          Qty
+
+                        </label>
+
+                        <Input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={
+                            line.qty
+                          }
+                          onChange={(
+                            e
+                          ) =>
+                            handleLineQtyChange(
+                              index,
+                              e.target.value
+                            )
+                          }
+                        />
+
+                      </div>
+
+
+                      <div>
+
+                        <label className="block text-sm font-medium mb-1">
+
+                          Price
+
+                        </label>
+
+                        <Input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={
+                            line.price
+                          }
+                          onChange={(
+                            e
+                          ) =>
+                            handleLinePriceChange(
+                              index,
+                              e.target.value
+                            )
+                          }
+                        />
+
+                      </div>
+
+                    </div>
+
+                  )
+                )}
+
+              </div>
+
+            )}
 
 
             {/* =================================================
@@ -1949,10 +2580,64 @@ const Penjualan = () => {
 
 
             {/* =================================================
-                BUTTONS
+                INVOICE TOTAL
             ================================================= */}
 
-            <div className="flex justify-end space-x-3 pt-4">
+            <div className="border rounded-lg p-4 bg-gray-50">
+
+              <div className="flex justify-between items-center">
+
+                <div>
+
+                  <div className="text-sm text-gray-500">
+
+                    Total Product
+
+                  </div>
+
+                  <div className="font-semibold">
+
+                    {formData.lines.length}
+
+                    {" product"}
+
+                  </div>
+
+                </div>
+
+
+                <div className="text-right">
+
+                  <div className="text-sm text-gray-500">
+
+                    Total Invoice
+
+                  </div>
+
+                  <div className="text-xl font-bold">
+
+                    Rp{" "}
+
+                    {Number(
+                      invoiceTotal
+                    ).toLocaleString(
+                      "id-ID"
+                    )}
+
+                  </div>
+
+                </div>
+
+              </div>
+
+            </div>
+
+
+            {/* =================================================
+                BUTTON
+            ================================================= */}
+
+            <div className="flex justify-end gap-3 pt-4">
 
               <Button
                 type="button"
@@ -1973,10 +2658,9 @@ const Penjualan = () => {
                 type="submit"
               >
 
-                {dialogMode ===
-                "add"
-                  ? "Add Transaction"
-                  : "Update Transaction"}
+                {dialogMode === "add"
+                  ? "Simpan Invoice"
+                  : "Update Product"}
 
               </Button>
 
