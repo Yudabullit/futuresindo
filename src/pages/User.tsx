@@ -1,11 +1,23 @@
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
 
-import { supabase } from "@/integrations/supabase/client";
+import {
+  supabase,
+} from "@/integrations/supabase/client";
 
-import { useToast } from "@/components/ui/use-toast";
+import {
+  useToast,
+} from "@/components/ui/use-toast";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import {
+  Button,
+} from "@/components/ui/button";
+
+import {
+  Input,
+} from "@/components/ui/input";
 
 import {
   Select,
@@ -40,7 +52,9 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 
-import { Search } from "@/components/ui/search";
+import {
+  Search,
+} from "@/components/ui/search";
 
 import {
   Trash2,
@@ -52,7 +66,9 @@ import {
   KeyRound,
 } from "lucide-react";
 
-import { XlsxTable } from "@/components/ui/xlsx-table";
+import {
+  XlsxTable,
+} from "@/components/ui/xlsx-table";
 
 // ============================================================
 // TYPE
@@ -76,23 +92,35 @@ const User = () => {
   // DATA
   // ==========================================================
 
-  const [users, setUsers] = useState<UserItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [users, setUsers] =
+    useState<UserItem[]>([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState<string | null>(null);
 
   // ==========================================================
-  // SEARCH / FILTER
+  // SEARCH
   // ==========================================================
 
-  const [searchTerm, setSearchTerm] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [searchTerm, setSearchTerm] =
+    useState("");
+
+  const [roleFilter, setRoleFilter] =
+    useState("all");
+
+  const [statusFilter, setStatusFilter] =
+    useState("all");
 
   // ==========================================================
   // DIALOG
   // ==========================================================
 
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] =
+    useState(false);
+
   const [dialogMode, setDialogMode] =
     useState<"add" | "edit">("add");
 
@@ -100,41 +128,58 @@ const User = () => {
   // FORM
   // ==========================================================
 
-  const [formData, setFormData] = useState({
-    username: "",
-    email: "",
-    role: "staff",
-    status: "active",
-  });
+  const [formData, setFormData] =
+    useState({
+      username: "",
+      email: "",
+      role: "staff",
+      status: "active",
+    });
 
   // ==========================================================
   // PASSWORD
   // ==========================================================
 
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [newPassword, setNewPassword] =
+    useState("");
 
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] =
-    useState(false);
+  const [
+    confirmPassword,
+    setConfirmPassword,
+  ] = useState("");
+
+  const [
+    showPassword,
+    setShowPassword,
+  ] = useState(false);
+
+  const [
+    showConfirmPassword,
+    setShowConfirmPassword,
+  ] = useState(false);
 
   // ==========================================================
   // EDITING
   // ==========================================================
 
-  const [editingId, setEditingId] = useState<string | null>(
-    null
-  );
+  const [editingId, setEditingId] =
+    useState<string | null>(null);
 
   // ==========================================================
   // PAGINATION
   // ==========================================================
 
-  const [page, setPage] = useState(1);
+  const [page, setPage] =
+    useState(1);
 
   const rowsPerPage = 10;
 
-  const { toast } = useToast();
+  // ==========================================================
+  // TOAST
+  // ==========================================================
+
+  const { toast } =
+    useToast();
 
   // ==========================================================
   // FETCH USERS
@@ -150,21 +195,33 @@ const User = () => {
         .select(
           "id, username, email, role, status, created_at"
         )
-        .order("created_at", {
-          ascending: false,
-        });
+        .order(
+          "created_at",
+          {
+            ascending: false,
+          }
+        );
 
+      // ------------------------------------------------------
       // SEARCH
+      // ------------------------------------------------------
 
-      if (searchTerm.trim()) {
-        const search = searchTerm.trim();
+      if (
+        searchTerm.trim()
+      ) {
+        const search =
+          searchTerm
+            .trim()
+            .replace(/,/g, "");
 
         query = query.or(
           `username.ilike.%${search}%,email.ilike.%${search}%`
         );
       }
 
-      // ROLE FILTER
+      // ------------------------------------------------------
+      // ROLE
+      // ------------------------------------------------------
 
       if (
         roleFilter &&
@@ -176,7 +233,9 @@ const User = () => {
         );
       }
 
-      // STATUS FILTER
+      // ------------------------------------------------------
+      // STATUS
+      // ------------------------------------------------------
 
       if (
         statusFilter &&
@@ -188,30 +247,40 @@ const User = () => {
         );
       }
 
+      // ------------------------------------------------------
+      // EXECUTE
+      // ------------------------------------------------------
+
       const {
         data,
-        error: fetchError,
+        error:
+          fetchError,
       } = await query;
 
       if (fetchError) {
         throw fetchError;
       }
 
-      setUsers(
-        (data || []) as UserItem[]
-      );
+      const result =
+        (data || []) as UserItem[];
+
+      setUsers(result);
 
       const totalPages =
-        Math.ceil(
-          (data?.length || 0) /
-            rowsPerPage
-        ) || 1;
+        Math.max(
+          1,
+          Math.ceil(
+            result.length /
+              rowsPerPage
+          )
+        );
 
-      setPage((currentPage) =>
-        Math.min(
-          currentPage,
-          totalPages
-        )
+      setPage(
+        (currentPage) =>
+          Math.min(
+            currentPage,
+            totalPages
+          )
       );
     } catch (err: any) {
       console.error(
@@ -219,10 +288,11 @@ const User = () => {
         err
       );
 
-      setError(
+      const message =
         err?.message ||
-          "Failed to load users."
-      );
+        "Failed to load users.";
+
+      setError(message);
 
       setUsers([]);
     } finally {
@@ -231,10 +301,12 @@ const User = () => {
   };
 
   // ==========================================================
-  // FETCH WHEN SEARCH / FILTER CHANGES
+  // FETCH WHEN FILTER CHANGES
   // ==========================================================
 
   useEffect(() => {
+    setPage(1);
+
     fetchUsers();
   }, [
     searchTerm,
@@ -255,9 +327,11 @@ const User = () => {
     });
 
     setNewPassword("");
+
     setConfirmPassword("");
 
     setShowPassword(false);
+
     setShowConfirmPassword(false);
 
     setEditingId(null);
@@ -271,6 +345,7 @@ const User = () => {
     resetForm();
 
     setDialogMode("add");
+
     setDialogOpen(true);
   };
 
@@ -278,23 +353,33 @@ const User = () => {
   // EDIT USER
   // ==========================================================
 
-  const handleEditUser = (user: UserItem) => {
+  const handleEditUser = (
+    user: UserItem
+  ) => {
     setDialogMode("edit");
 
     setFormData({
-      username: user.username || "",
-      email: user.email || "",
-      role: user.role || "staff",
-      status: user.status || "active",
+      username:
+        user.username || "",
+      email:
+        user.email || "",
+      role:
+        user.role || "staff",
+      status:
+        user.status || "active",
     });
 
-    // Password selalu dikosongkan.
-    // Password lama TIDAK pernah diambil.
+    // IMPORTANT:
+    // Password lama TIDAK PERNAH DIAMBIL.
+    // Password hanya dikirim kalau user
+    // memasukkan password baru.
 
     setNewPassword("");
+
     setConfirmPassword("");
 
     setShowPassword(false);
+
     setShowConfirmPassword(false);
 
     setEditingId(user.id);
@@ -303,32 +388,125 @@ const User = () => {
   };
 
   // ==========================================================
-  // CALL EDGE FUNCTION
+  // CALL ADMIN USER EDGE FUNCTION
   // ==========================================================
 
   const callAdminUser = async (
     payload: Record<string, unknown>
   ) => {
-    const {
-      data,
-      error,
-    } = await supabase.functions.invoke(
-      "admin-user",
-      {
-        body: payload,
-      }
-    );
+    // --------------------------------------------------------
+    // GET CURRENT SESSION
+    // --------------------------------------------------------
 
-    if (error) {
-      throw error;
+    const {
+      data: sessionData,
+      error:
+        sessionError,
+    } =
+      await supabase.auth.getSession();
+
+    if (sessionError) {
+      throw new Error(
+        sessionError.message
+      );
     }
 
     if (
-      !data ||
+      !sessionData.session
+    ) {
+      throw new Error(
+        "Your login session has expired. Please login again."
+      );
+    }
+
+    // --------------------------------------------------------
+    // INVOKE EDGE FUNCTION
+    // --------------------------------------------------------
+
+    const {
+      data,
+      error,
+    } =
+      await supabase.functions.invoke(
+        "admin-user",
+        {
+          body: payload,
+          headers: {
+            Authorization:
+              `Bearer ${sessionData.session.access_token}`,
+          },
+        }
+      );
+
+    // --------------------------------------------------------
+    // HANDLE EDGE FUNCTION ERROR
+    // --------------------------------------------------------
+
+    if (error) {
+      console.error(
+        "EDGE FUNCTION ERROR:",
+        error
+      );
+
+      // Supabase FunctionsHttpError
+      // biasanya menyimpan response di error.context
+      try {
+        const context =
+          (error as any)
+            ?.context;
+
+        if (
+          context &&
+          typeof context.json ===
+            "function"
+        ) {
+          const errorBody =
+            await context.json();
+
+          console.error(
+            "EDGE FUNCTION BODY:",
+            errorBody
+          );
+
+          throw new Error(
+            errorBody?.error ||
+              errorBody?.message ||
+              error.message ||
+              "Edge Function failed."
+          );
+        }
+      } catch (
+        contextError
+      ) {
+        if (
+          contextError instanceof
+          Error
+        ) {
+          throw contextError;
+        }
+      }
+
+      throw new Error(
+        error.message ||
+          "Edge Function failed."
+      );
+    }
+
+    // --------------------------------------------------------
+    // RESPONSE VALIDATION
+    // --------------------------------------------------------
+
+    if (!data) {
+      throw new Error(
+        "No response received from Edge Function."
+      );
+    }
+
+    if (
       data.success !== true
     ) {
       throw new Error(
-        data?.error ||
+        data.error ||
           "Operation failed."
       );
     }
@@ -340,139 +518,86 @@ const User = () => {
   // DELETE USER
   // ==========================================================
 
-  const handleDeleteUser = async (
-    id: string
-  ) => {
-    const user = users.find(
-      (u) => u.id === id
-    );
+  const handleDeleteUser =
+    async (
+      id: string
+    ) => {
+      const user =
+        users.find(
+          (u) =>
+            u.id === id
+        );
 
-    if (!user) {
-      return;
-    }
+      if (!user) {
+        return;
+      }
 
-    const confirmed =
-      window.confirm(
-        `Delete user "${user.username}"?\n\nThis will delete the authentication account too.`
-      );
+      const confirmed =
+        window.confirm(
+          `Delete user "${user.username}"?\n\nThis will delete the authentication account too.`
+        );
 
-    if (!confirmed) {
-      return;
-    }
+      if (!confirmed) {
+        return;
+      }
 
-    try {
-      setLoading(true);
+      try {
+        setLoading(true);
 
-      await callAdminUser({
-        action: "delete",
-        user_id: id,
-      });
+        await callAdminUser({
+          action: "delete",
+          user_id: id,
+        });
 
-      toast({
-        title: "Success",
-        description:
-          "User deleted successfully.",
-      });
+        toast({
+          title: "Success",
+          description:
+            "User deleted successfully.",
+        });
 
-      await fetchUsers();
-    } catch (err: any) {
-      console.error(
-        "DELETE USER ERROR:",
-        err
-      );
+        await fetchUsers();
+      } catch (err: any) {
+        console.error(
+          "DELETE USER ERROR:",
+          err
+        );
 
-      toast({
-        title: "Error",
-        description:
-          err?.message ||
-          "Failed to delete user.",
-        variant:
-          "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+        toast({
+          title: "Error",
+          description:
+            err?.message ||
+            "Failed to delete user.",
+          variant:
+            "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
 
   // ==========================================================
   // SUBMIT
   // ==========================================================
 
-  const handleSubmit = async (
-    e: React.FormEvent
-  ) => {
-    e.preventDefault();
+  const handleSubmit =
+    async (
+      e: React.FormEvent
+    ) => {
+      e.preventDefault();
 
-    // ========================================================
-    // USERNAME
-    // ========================================================
+      // ------------------------------------------------------
+      // USERNAME
+      // ------------------------------------------------------
 
-    const username =
-      formData.username.trim();
+      const username =
+        formData.username.trim();
 
-    if (!username) {
-      toast({
-        title: "Username required",
-        description:
-          "Please enter a username.",
-        variant:
-          "destructive",
-      });
-
-      return;
-    }
-
-    // ========================================================
-    // EMAIL
-    // ========================================================
-
-    const email =
-      formData.email.trim();
-
-    if (!email) {
-      toast({
-        title: "Email required",
-        description:
-          "Please enter an email.",
-        variant:
-          "destructive",
-      });
-
-      return;
-    }
-
-    // ========================================================
-    // PASSWORD
-    // ========================================================
-
-    if (
-      dialogMode === "add" &&
-      !newPassword
-    ) {
-      toast({
-        title:
-          "Password required",
-        description:
-          "New user must have a password.",
-        variant:
-          "destructive",
-      });
-
-      return;
-    }
-
-    // Password hanya divalidasi
-    // kalau diisi.
-
-    if (newPassword) {
-      if (
-        newPassword.length < 8
-      ) {
+      if (!username) {
         toast({
           title:
-            "Password too short",
+            "Username required",
           description:
-            "Password must contain at least 8 characters.",
+            "Please enter a username.",
           variant:
             "destructive",
         });
@@ -480,9 +605,93 @@ const User = () => {
         return;
       }
 
+      // ------------------------------------------------------
+      // EMAIL
+      // ------------------------------------------------------
+
+      const email =
+        formData.email
+          .trim()
+          .toLowerCase();
+
+      if (!email) {
+        toast({
+          title:
+            "Email required",
+          description:
+            "Please enter an email.",
+          variant:
+            "destructive",
+        });
+
+        return;
+      }
+
+      // ------------------------------------------------------
+      // ADD PASSWORD
+      // ------------------------------------------------------
+
       if (
+        dialogMode === "add" &&
+        !newPassword
+      ) {
+        toast({
+          title:
+            "Password required",
+          description:
+            "New user must have a password.",
+          variant:
+            "destructive",
+        });
+
+        return;
+      }
+
+      // ------------------------------------------------------
+      // PASSWORD VALIDATION
+      // ------------------------------------------------------
+
+      if (newPassword) {
+        if (
+          newPassword.length < 8
+        ) {
+          toast({
+            title:
+              "Password too short",
+            description:
+              "Password must contain at least 8 characters.",
+            variant:
+              "destructive",
+          });
+
+          return;
+        }
+
+        if (
+          newPassword !==
+          confirmPassword
+        ) {
+          toast({
+            title:
+              "Password mismatch",
+            description:
+              "Password and confirmation password do not match.",
+            variant:
+              "destructive",
+          });
+
+          return;
+        }
+      }
+
+      // ------------------------------------------------------
+      // CONFIRM PASSWORD FOR ADD
+      // ------------------------------------------------------
+
+      if (
+        dialogMode === "add" &&
         newPassword !==
-        confirmPassword
+          confirmPassword
       ) {
         toast({
           title:
@@ -495,144 +704,148 @@ const User = () => {
 
         return;
       }
-    }
 
-    // ========================================================
-    // SAVE
-    // ========================================================
+      // ------------------------------------------------------
+      // SAVE
+      // ------------------------------------------------------
 
-    try {
-      setLoading(true);
-
-      // ======================================================
-      // ADD
-      // ======================================================
-
-      if (
-        dialogMode === "add"
-      ) {
-        await callAdminUser({
-          action: "create",
-
-          username,
-
-          email,
-
-          password:
-            newPassword,
-
-          role:
-            formData.role,
-
-          status:
-            formData.status,
-        });
-
-        toast({
-          title: "Success",
-          description:
-            "User created successfully.",
-        });
-      }
-
-      // ======================================================
-      // EDIT
-      // ======================================================
-
-      else {
-        if (!editingId) {
-          throw new Error(
-            "User ID is missing."
-          );
-        }
-
-        const payload: Record<
-          string,
-          unknown
-        > = {
-          action: "update",
-
-          user_id:
-            editingId,
-
-          username,
-
-          email,
-
-          role:
-            formData.role,
-
-          status:
-            formData.status,
-        };
+      try {
+        setLoading(true);
 
         // ====================================================
-        // PASSWORD HANYA DIKIRIM
-        // JIKA USER MEMASUKKAN PASSWORD BARU
+        // CREATE
         // ====================================================
 
         if (
-          newPassword.trim()
+          dialogMode === "add"
         ) {
-          payload.password =
-            newPassword;
+          await callAdminUser({
+            action: "create",
+
+            username,
+
+            email,
+
+            password:
+              newPassword,
+
+            role:
+              formData.role,
+
+            status:
+              formData.status,
+          });
+
+          toast({
+            title: "Success",
+            description:
+              "User created successfully.",
+          });
         }
 
-        await callAdminUser(
-          payload
+        // ====================================================
+        // UPDATE
+        // ====================================================
+
+        else {
+          if (!editingId) {
+            throw new Error(
+              "User ID is missing."
+            );
+          }
+
+          const payload: Record<
+            string,
+            unknown
+          > = {
+            action: "update",
+
+            user_id:
+              editingId,
+
+            username,
+
+            email,
+
+            role:
+              formData.role,
+
+            status:
+              formData.status,
+          };
+
+          // --------------------------------------------------
+          // IMPORTANT
+          // Password hanya dikirim jika diisi
+          // --------------------------------------------------
+
+          if (
+            newPassword.trim()
+          ) {
+            payload.password =
+              newPassword;
+          }
+
+          const result =
+            await callAdminUser(
+              payload
+            );
+
+          toast({
+            title: "Success",
+            description:
+              result.password_changed
+                ? "User and password updated successfully."
+                : "User updated successfully.",
+          });
+        }
+
+        // ------------------------------------------------------
+        // CLOSE
+        // ------------------------------------------------------
+
+        setDialogOpen(false);
+
+        resetForm();
+
+        await fetchUsers();
+      } catch (err: any) {
+        console.error(
+          "SAVE USER ERROR:",
+          err
         );
 
         toast({
-          title: "Success",
+          title: "Error",
           description:
-            newPassword
-              ? "User and password updated successfully."
-              : "User updated successfully.",
+            err?.message ||
+            "Failed to save user.",
+          variant:
+            "destructive",
         });
+      } finally {
+        setLoading(false);
       }
-
-      // ======================================================
-      // CLOSE
-      // ======================================================
-
-      setDialogOpen(false);
-
-      resetForm();
-
-      await fetchUsers();
-    } catch (err: any) {
-      console.error(
-        "SAVE USER ERROR:",
-        err
-      );
-
-      toast({
-        title: "Error",
-        description:
-          err?.message ||
-          "Failed to save user.",
-        variant:
-          "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
 
   // ==========================================================
   // PAGINATION
   // ==========================================================
 
   const totalPages =
-    Math.ceil(
-      users.length /
-        rowsPerPage
-    ) || 1;
+    Math.max(
+      1,
+      Math.ceil(
+        users.length /
+          rowsPerPage
+      )
+    );
 
   const paginatedUsers =
     users.slice(
       (page - 1) *
         rowsPerPage,
+
       page *
         rowsPerPage
     );
@@ -642,15 +855,26 @@ const User = () => {
   // ==========================================================
 
   const formatDate = (
-    value: string | null
+    value:
+      | string
+      | null
   ) => {
     if (!value) {
       return "-";
     }
 
-    return new Date(
-      value
-    ).toLocaleDateString(
+    const date =
+      new Date(value);
+
+    if (
+      Number.isNaN(
+        date.getTime()
+      )
+    ) {
+      return "-";
+    }
+
+    return date.toLocaleDateString(
       "id-ID"
     );
   };
@@ -681,7 +905,6 @@ const User = () => {
             className="flex items-center"
           >
             <Plus className="mr-2 h-4 w-4" />
-
             Add User
           </Button>
 
@@ -725,7 +948,6 @@ const User = () => {
               className="px-3"
             >
               <Download className="mr-2 h-4 w-4" />
-
               Export
             </Button>
           </XlsxTable>
@@ -822,7 +1044,11 @@ const User = () => {
 
       {error && (
         <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded">
-          <p>{error}</p>
+
+          <p>
+            {error}
+          </p>
+
         </div>
       )}
 
@@ -843,6 +1069,7 @@ const User = () => {
 
       {!loading &&
         users.length > 0 && (
+
           <Table>
 
             <TableHeader>
@@ -898,10 +1125,8 @@ const User = () => {
                     <TableCell>
 
                       <span className="capitalize px-2 py-1 bg-gray-100 rounded text-xs">
-
                         {u.role ||
                           "staff"}
-
                       </span>
 
                     </TableCell>
@@ -916,10 +1141,8 @@ const User = () => {
                             : "bg-red-100 text-red-800"
                         }`}
                       >
-
                         {u.status ||
                           "active"}
-
                       </span>
 
                     </TableCell>
@@ -978,6 +1201,7 @@ const User = () => {
 
       {!loading &&
         users.length > 0 && (
+
           <Pagination>
 
             <PaginationContent>
@@ -1056,15 +1280,19 @@ const User = () => {
         open={
           dialogOpen
         }
-        onOpenChange={
-          (open) => {
-            setDialogOpen(open);
+        onOpenChange={(
+          open
+        ) => {
 
-            if (!open) {
-              resetForm();
-            }
+          setDialogOpen(
+            open
+          );
+
+          if (!open) {
+            resetForm();
           }
-        }
+
+        }}
       >
 
         <DialogContent className="w-full max-w-md max-h-[90vh] overflow-y-auto">
@@ -1170,10 +1398,12 @@ const User = () => {
                 <KeyRound className="h-4 w-4" />
 
                 <label className="block text-sm font-medium">
+
                   {dialogMode ===
                   "add"
                     ? "Password *"
                     : "New Password"}
+
                 </label>
 
               </div>
@@ -1238,7 +1468,7 @@ const User = () => {
               {dialogMode ===
                 "edit" && (
                 <p className="text-xs text-gray-500 mt-1">
-                  Isi hanya jika ingin mengganti password.
+                  Isi password hanya jika ingin mengganti password user.
                 </p>
               )}
 
@@ -1434,12 +1664,14 @@ const User = () => {
                 type="submit"
                 disabled={loading}
               >
+
                 {loading
                   ? "Saving..."
                   : dialogMode ===
                     "add"
                   ? "Add User"
                   : "Update User"}
+
               </Button>
 
             </div>
