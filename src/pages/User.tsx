@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 
 import { supabase } from "@/integrations/supabase/client";
-
 import { useToast } from "@/components/ui/use-toast";
 
 import { Button } from "@/components/ui/button";
@@ -41,13 +40,12 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 
-import { Search } from "@/components/ui/search";
-
 import {
   Trash2,
   Edit3,
   Plus,
   Download,
+  Search as SearchIcon,
 } from "lucide-react";
 
 import { XlsxTable } from "@/components/ui/xlsx-table";
@@ -91,6 +89,7 @@ const User = () => {
   // ==========================================================
 
   const [dialogOpen, setDialogOpen] = useState(false);
+
   const [dialogMode, setDialogMode] =
     useState<"add" | "edit">("add");
 
@@ -119,6 +118,10 @@ const User = () => {
   const [page, setPage] = useState(1);
 
   const rowsPerPage = 10;
+
+  // ==========================================================
+  // TOAST
+  // ==========================================================
 
   const { toast } = useToast();
 
@@ -157,7 +160,6 @@ const User = () => {
       // ======================================================
 
       if (
-        roleFilter &&
         roleFilter !== "all"
       ) {
         query = query.eq(
@@ -171,7 +173,6 @@ const User = () => {
       // ======================================================
 
       if (
-        statusFilter &&
         statusFilter !== "all"
       ) {
         query = query.eq(
@@ -181,7 +182,7 @@ const User = () => {
       }
 
       // ======================================================
-      // REQUEST
+      // EXECUTE
       // ======================================================
 
       const {
@@ -197,7 +198,11 @@ const User = () => {
         (data || []) as UserItem[]
       );
 
-      const totalPages =
+      // ======================================================
+      // RESET PAGE
+      // ======================================================
+
+      const calculatedPages =
         Math.ceil(
           (data?.length || 0) /
             rowsPerPage
@@ -206,7 +211,7 @@ const User = () => {
       setPage((currentPage) =>
         Math.min(
           currentPage,
-          totalPages
+          calculatedPages
         )
       );
     } catch (err: any) {
@@ -227,7 +232,7 @@ const User = () => {
   };
 
   // ==========================================================
-  // FETCH WHEN SEARCH / FILTER CHANGES
+  // SEARCH / FILTER EFFECT
   // ==========================================================
 
   useEffect(() => {
@@ -276,10 +281,13 @@ const User = () => {
     setFormData({
       username:
         user.username || "",
+
       email:
         user.email || "",
+
       role:
         user.role || "staff",
+
       status:
         user.status || "active",
     });
@@ -298,7 +306,7 @@ const User = () => {
   ) => {
     const {
       data,
-      error,
+      error: functionError,
     } =
       await supabase.functions.invoke(
         "admin-user",
@@ -307,15 +315,15 @@ const User = () => {
         }
       );
 
-    if (error) {
+    if (functionError) {
       console.error(
-        "EDGE FUNCTION ERROR:",
-        error
+        "ADMIN USER FUNCTION ERROR:",
+        functionError
       );
 
       throw new Error(
-        error.message ||
-          "Failed to send request to Edge Function."
+        functionError.message ||
+          "Failed to send request."
       );
     }
 
@@ -341,7 +349,8 @@ const User = () => {
   ) => {
     const user =
       users.find(
-        (u) => u.id === id
+        (item) =>
+          item.id === id
       );
 
     if (!user) {
@@ -448,7 +457,7 @@ const User = () => {
       setLoading(true);
 
       // ======================================================
-      // CREATE PROFILE / USER
+      // CREATE
       // ======================================================
 
       if (
@@ -456,14 +465,10 @@ const User = () => {
       ) {
         await callAdminUser({
           action: "create",
-
           username,
-
           email,
-
           role:
             formData.role,
-
           status:
             formData.status,
         });
@@ -476,7 +481,7 @@ const User = () => {
       }
 
       // ======================================================
-      // UPDATE PROFILE
+      // UPDATE
       // ======================================================
 
       else {
@@ -488,17 +493,12 @@ const User = () => {
 
         await callAdminUser({
           action: "update",
-
           user_id:
             editingId,
-
           username,
-
           email,
-
           role:
             formData.role,
-
           status:
             formData.status,
         });
@@ -552,6 +552,7 @@ const User = () => {
     users.slice(
       (page - 1) *
         rowsPerPage,
+
       page *
         rowsPerPage
     );
@@ -567,9 +568,18 @@ const User = () => {
       return "-";
     }
 
-    return new Date(
-      value
-    ).toLocaleDateString(
+    const date =
+      new Date(value);
+
+    if (
+      Number.isNaN(
+        date.getTime()
+      )
+    ) {
+      return "-";
+    }
+
+    return date.toLocaleDateString(
       "id-ID"
     );
   };
@@ -585,22 +595,21 @@ const User = () => {
           HEADER
       ==================================================== */}
 
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
 
         <h1 className="text-2xl font-bold">
           User Management
         </h1>
 
-        <div className="flex flex-wrap gap-3 mt-4 lg:mt-0">
+        <div className="flex flex-wrap gap-3">
 
           <Button
+            type="button"
             onClick={
               handleAddUser
             }
-            className="flex items-center"
           >
             <Plus className="mr-2 h-4 w-4" />
-
             Add User
           </Button>
 
@@ -636,12 +645,11 @@ const User = () => {
             className="flex items-center"
           >
             <Button
+              type="button"
               variant="outline"
               size="sm"
-              className="px-3"
             >
               <Download className="mr-2 h-4 w-4" />
-
               Export
             </Button>
           </XlsxTable>
@@ -650,23 +658,43 @@ const User = () => {
       </div>
 
       {/* ====================================================
-          FILTER
+          FILTERS
       ==================================================== */}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-        <Search
-          value={
-            searchTerm
-          }
-          onChange={(e) =>
-            setSearchTerm(
-              e.target.value
-            )
-          }
-          placeholder="Search username or email..."
-          className="w-full"
-        />
+        {/* SEARCH */}
+
+        <div className="relative">
+
+          <SearchIcon
+            className="
+              absolute
+              left-3
+              top-1/2
+              -translate-y-1/2
+              h-4
+              w-4
+              text-gray-400
+            "
+          />
+
+          <Input
+            value={
+              searchTerm
+            }
+            onChange={(e) =>
+              setSearchTerm(
+                e.target.value
+              )
+            }
+            placeholder="Search username or email..."
+            className="pl-9"
+          />
+
+        </div>
+
+        {/* ROLE */}
 
         <Select
           value={
@@ -700,6 +728,8 @@ const User = () => {
 
           </SelectContent>
         </Select>
+
+        {/* STATUS */}
 
         <Select
           value={
@@ -737,8 +767,18 @@ const User = () => {
       ==================================================== */}
 
       {error && (
-        <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded">
-          <p>{error}</p>
+        <div className="rounded border-l-4 border-red-500 bg-red-50 p-4 text-red-700">
+          {error}
+        </div>
+      )}
+
+      {/* ====================================================
+          LOADING
+      ==================================================== */}
+
+      {loading && (
+        <div className="py-10 text-center text-gray-500">
+          Loading users...
         </div>
       )}
 
@@ -748,7 +788,7 @@ const User = () => {
 
       {!loading &&
         users.length === 0 && (
-          <div className="text-center py-10 text-gray-500">
+          <div className="py-10 text-center text-gray-500">
             No users found
           </div>
         )}
@@ -759,133 +799,138 @@ const User = () => {
 
       {!loading &&
         users.length > 0 && (
-          <Table>
 
-            <TableHeader>
+          <div className="overflow-x-auto">
 
-              <TableRow>
+            <Table>
 
-                <TableCell className="font-semibold">
-                  Username
-                </TableCell>
+              <TableHeader>
 
-                <TableCell className="font-semibold">
-                  Email
-                </TableCell>
+                <TableRow>
 
-                <TableCell className="font-semibold">
-                  Role
-                </TableCell>
+                  <TableCell className="font-semibold">
+                    Username
+                  </TableCell>
 
-                <TableCell className="font-semibold">
-                  Status
-                </TableCell>
+                  <TableCell className="font-semibold">
+                    Email
+                  </TableCell>
 
-                <TableCell className="font-semibold">
-                  Created At
-                </TableCell>
+                  <TableCell className="font-semibold">
+                    Role
+                  </TableCell>
 
-                <TableCell className="text-center font-semibold">
-                  Actions
-                </TableCell>
+                  <TableCell className="font-semibold">
+                    Status
+                  </TableCell>
 
-              </TableRow>
+                  <TableCell className="font-semibold">
+                    Created At
+                  </TableCell>
 
-            </TableHeader>
+                  <TableCell className="text-center font-semibold">
+                    Actions
+                  </TableCell>
 
-            <TableBody>
+                </TableRow>
 
-              {paginatedUsers.map(
-                (u) => (
+              </TableHeader>
 
-                  <TableRow
-                    key={u.id}
-                  >
+              <TableBody>
 
-                    <TableCell className="font-medium">
-                      {u.username}
-                    </TableCell>
+                {paginatedUsers.map(
+                  (user) => (
 
-                    <TableCell>
-                      {u.email ||
-                        "-"}
-                    </TableCell>
+                    <TableRow
+                      key={
+                        user.id
+                      }
+                    >
 
-                    <TableCell>
+                      <TableCell className="font-medium">
+                        {user.username}
+                      </TableCell>
 
-                      <span className="capitalize px-2 py-1 bg-gray-100 rounded text-xs">
+                      <TableCell>
+                        {user.email ||
+                          "-"}
+                      </TableCell>
 
-                        {u.role ||
-                          "staff"}
+                      <TableCell>
 
-                      </span>
+                        <span className="capitalize rounded bg-gray-100 px-2 py-1 text-xs">
+                          {user.role ||
+                            "staff"}
+                        </span>
 
-                    </TableCell>
+                      </TableCell>
 
-                    <TableCell>
+                      <TableCell>
 
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs capitalize ${
-                          u.status ===
-                          "active"
-                            ? "bg-green-100 text-green-800"
-                            : "bg-red-100 text-red-800"
-                        }`}
-                      >
+                        <span
+                          className={`rounded-full px-2 py-1 text-xs capitalize ${
+                            user.status ===
+                            "active"
+                              ? "bg-green-100 text-green-800"
+                              : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {user.status ||
+                            "active"}
+                        </span>
 
-                        {u.status ||
-                          "active"}
+                      </TableCell>
 
-                      </span>
+                      <TableCell>
+                        {formatDate(
+                          user.created_at
+                        )}
+                      </TableCell>
 
-                    </TableCell>
+                      <TableCell>
 
-                    <TableCell>
-                      {formatDate(
-                        u.created_at
-                      )}
-                    </TableCell>
+                        <div className="flex justify-center gap-2">
 
-                    <TableCell className="flex justify-center space-x-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              handleEditUser(
+                                user
+                              )
+                            }
+                          >
+                            <Edit3 className="h-4 w-4" />
+                          </Button>
 
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          handleEditUser(
-                            u
-                          )
-                        }
-                        className="px-3"
-                      >
-                        <Edit3 className="h-4 w-4" />
-                      </Button>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            onClick={() =>
+                              handleDeleteUser(
+                                user.id
+                              )
+                            }
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
 
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="sm"
-                        onClick={() =>
-                          handleDeleteUser(
-                            u.id
-                          )
-                        }
-                        className="px-3"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                        </div>
 
-                    </TableCell>
+                      </TableCell>
 
-                  </TableRow>
+                    </TableRow>
 
-                )
-              )}
+                  )
+                )}
 
-            </TableBody>
+              </TableBody>
 
-          </Table>
+            </Table>
+
+          </div>
         )}
 
       {/* ====================================================
@@ -894,6 +939,7 @@ const User = () => {
 
       {!loading &&
         users.length > 0 && (
+
           <Pagination>
 
             <PaginationContent>
@@ -903,9 +949,9 @@ const User = () => {
                 <PaginationPrevious
                   onClick={() =>
                     setPage(
-                      (p) =>
+                      (current) =>
                         Math.max(
-                          p - 1,
+                          current - 1,
                           1
                         )
                     )
@@ -918,24 +964,26 @@ const User = () => {
                 length:
                   totalPages,
               }).map(
-                (_, i) => (
+                (_, index) => (
 
                   <PaginationItem
-                    key={i}
+                    key={
+                      index
+                    }
                   >
 
                     <PaginationLink
                       isActive={
-                        i + 1 ===
-                        page
+                        page ===
+                        index + 1
                       }
                       onClick={() =>
                         setPage(
-                          i + 1
+                          index + 1
                         )
                       }
                     >
-                      {i + 1}
+                      {index + 1}
                     </PaginationLink>
 
                   </PaginationItem>
@@ -948,9 +996,9 @@ const User = () => {
                 <PaginationNext
                   onClick={() =>
                     setPage(
-                      (p) =>
+                      (current) =>
                         Math.min(
-                          p + 1,
+                          current + 1,
                           totalPages
                         )
                     )
@@ -972,20 +1020,22 @@ const User = () => {
         open={
           dialogOpen
         }
-        onOpenChange={
-          (open) => {
-            setDialogOpen(
-              open
-            );
+        onOpenChange={(
+          open
+        ) => {
 
-            if (!open) {
-              resetForm();
-            }
+          setDialogOpen(
+            open
+          );
+
+          if (!open) {
+            resetForm();
           }
-        }
+
+        }}
       >
 
-        <DialogContent className="w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-full max-w-md">
 
           <DialogHeader>
 
@@ -1002,8 +1052,8 @@ const User = () => {
 
               {dialogMode ===
               "add"
-                ? "Create a new application user."
-                : "Update user information."}
+                ? "Create a new user profile."
+                : "Update user profile information."}
 
             </DialogDescription>
 
@@ -1013,7 +1063,7 @@ const User = () => {
             onSubmit={
               handleSubmit
             }
-            className="space-y-4 mt-2"
+            className="mt-2 space-y-4"
           >
 
             {/* =================================================
@@ -1022,7 +1072,7 @@ const User = () => {
 
             <div>
 
-              <label className="block text-sm font-medium mb-1">
+              <label className="mb-1 block text-sm font-medium">
                 Username *
               </label>
 
@@ -1032,8 +1082,8 @@ const User = () => {
                 }
                 onChange={(e) =>
                   setFormData(
-                    (prev) => ({
-                      ...prev,
+                    (previous) => ({
+                      ...previous,
                       username:
                         e.target
                           .value,
@@ -1052,7 +1102,7 @@ const User = () => {
 
             <div>
 
-              <label className="block text-sm font-medium mb-1">
+              <label className="mb-1 block text-sm font-medium">
                 Email *
               </label>
 
@@ -1063,8 +1113,8 @@ const User = () => {
                 }
                 onChange={(e) =>
                   setFormData(
-                    (prev) => ({
-                      ...prev,
+                    (previous) => ({
+                      ...previous,
                       email:
                         e.target
                           .value,
@@ -1083,7 +1133,7 @@ const User = () => {
 
             <div>
 
-              <label className="block text-sm font-medium mb-1">
+              <label className="mb-1 block text-sm font-medium">
                 Role *
               </label>
 
@@ -1095,10 +1145,9 @@ const User = () => {
                   value
                 ) =>
                   setFormData(
-                    (prev) => ({
-                      ...prev,
-                      role:
-                        value,
+                    (previous) => ({
+                      ...previous,
+                      role: value,
                     })
                   )
                 }
@@ -1136,7 +1185,7 @@ const User = () => {
 
             <div>
 
-              <label className="block text-sm font-medium mb-1">
+              <label className="mb-1 block text-sm font-medium">
                 Status *
               </label>
 
@@ -1148,8 +1197,8 @@ const User = () => {
                   value
                 ) =>
                   setFormData(
-                    (prev) => ({
-                      ...prev,
+                    (previous) => ({
+                      ...previous,
                       status:
                         value,
                     })
@@ -1183,18 +1232,18 @@ const User = () => {
                 BUTTON
             ================================================= */}
 
-            <div className="flex justify-end space-x-3 pt-4">
+            <div className="flex justify-end gap-3 pt-4">
 
               <Button
                 type="button"
                 variant="outline"
+                disabled={
+                  loading
+                }
                 onClick={() =>
                   setDialogOpen(
                     false
                   )
-                }
-                disabled={
-                  loading
                 }
               >
                 Cancel
